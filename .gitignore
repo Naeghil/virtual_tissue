@@ -1,4 +1,9 @@
+/.vscode/
 /DATA/
 /RESULTS/
 /rateModel/rateModel_CODE/
 /rateModel/architecture/matrices/
+/rateModel/Makefile
+/rateModel/generator
+/rateModel/generator.d
+/rateModel/rateModel
