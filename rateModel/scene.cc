@@ -30,7 +30,7 @@ class Scene {
             if (noCurrentPatch >= IMAGE_PATCHES) newImage();   // Get patch from new image
             else changeSaccade();                           // Get new patch from same image
             iMat patch(side[LGN], vector<vector<float>>(side[LGN], vector<float>(2,.0)));
-            for (int yo = 0; yo < side[LGN]; yo++) for (int xo = 0; xo < side[LGN]; xo++) for (int z = 0; z < 2; z++) patch[yo][xo][z] = image[coord[1]][coord[0]][z];
+            for (int yo = 0; yo < side[LGN]; yo++) for (int xo = 0; xo < side[LGN]; xo++) for (int z = 0; z < 2; z++) patch[yo][xo][z] = image[coord[1]+yo][coord[0]+xo][z];
             noCurrentPatch++;
             return patch;
         }
@@ -59,7 +59,7 @@ class Scene {
                 double theta =  tDist(rng) * M_PI * 2;
                 y = coord[0] + int(round(r * sin(theta)));
                 x = coord[1] + int(round(r * cos(theta)));
-            } while (x < 0 || y < 0 || x > (image[0].size() - side[LGN]) || y > (image.size() - side[LGN]) || (x == 0 && y == 0));
+            } while (x < 0 || y < 0 || x > (int(image[0].size()) - side[LGN]) || y > (int(image.size()) - side[LGN]) || (x == 0 && y == 0));
             coord[0] = y; coord[1] = x;
         }
 
@@ -76,7 +76,7 @@ class Scene {
             for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) for (int z = 0; z < 2; z++) {
                 mat >> image[y][x][z];
                 // if (toNorm) TODO: the thing ;
-            } 
+            }
             noCurrentPatch = 0;
             do {  // Initial patch coordinates
                 coord[0] = rand() % (image.size() - side[LGN]);

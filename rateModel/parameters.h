@@ -11,7 +11,7 @@ const char *PName[PMax] = {"V1L4E", "V1L4I", "V1L23E", "V1L23I", "V2L4E", "V2L4I
 // Population numbers from Table 1a Teichmann, et al., 2021; for each layer there is a square geometry (d1) and a 3D geometry (d2)
 const int side[PMax] = {23,23,17,17,13,13,10,10,32};
 const int depth[PMax] = {4,1,7,2,10,3,16,5,2};
-const float expR[PMax] = {.1, .1, .1, .1, .1, .1, .1, .1, 1.057};
+const float expR[PMax] = {.1, .1, .1, .1, .1, .1, .1, .1, .1057};
 
 // SYNAPSE PARAMETERS
 enum STypes {FF, Lat, FB, STMax,};

@@ -13,8 +13,8 @@ void addSyn(ModelSpec &m, Populations s, Populations t, int d, STypes type, doub
         double alphainit = 1.;
         // Unclear what alphadisc is; initialised as such in the original implementation
         if (alphadisc != .0)  alphainit = alphadisc / (pow(RF[type][tLayer]*RF[type][tLayer]*depth[s], .5) * Ew);
-        if(type==FF) {  // Feedforward
-            ExcitatoryFF::VarValues s_ini(initVar<InitVarSnippet::Uniform>({0,2*Ew}), .0, d);
+        if(type!=FB) {  // Feedforward and Lat
+            ExcitatoryFF::VarValues s_ini(initVar<InitVarSnippet::Uniform>({0.,2*Ew}), .0, d);
             ExcitatoryFF::PostVarValues p_ini({alphainit, .0, gammac});
             syn = m.addSynapsePopulation<ExcitatoryFF, ffPS>(
                 std::string(PName[s])+"_"+std::string(PName[t]), 
@@ -40,13 +40,13 @@ void modelDefinition(ModelSpec &model)
     model.setDT(1);
     model.setName("rateModel");
     // NEURONS
-    model.addNeuronPopulation<rateInput>("LGN", side[LGN]*side[LGN]*depth[LGN], {}, rateInput::VarValues(.0, .0));
-    rateNeuronE::VarValues iniE(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1., /*Ca*/.0, /*tauLearn*/.0, /*avgR*/.0);
-    rateNeuronI::VarValues iniI(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1., /*Ca*/.0, /*tauLearn*/.0, /*avgR*/.0);
+    model.addNeuronPopulation<rateInput>("LGN", side[LGN]*side[LGN]*depth[LGN], {}, rateInput::VarValues(.0, .0, .0));
+    rateNeuronE::VarValues iniE(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1., /*Ca*/.0, /*avgR*/.0);
+    rateNeuronI::VarValues iniI(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1., /*Ca*/.0, /*avgR*/.0);
     for (int p = 0; p < PMax-1; p++) {  // tauCa changes by layer
         int noNeurons = side[p]*side[p]*depth[p];
         double tauCa = 10.;
-        if (Layers(p/2) == V1L23 || Layers(p/2) == V2L23) tauCa = 500.;
+        if (p == V1L23E || p == V2L23E) tauCa = 500.;
         if (p%2 == 1) model.addNeuronPopulation<rateNeuronI>(PName[p], noNeurons, rateNeuronI::ParamValues(tauCa, noNeurons), iniI);
         else model.addNeuronPopulation<rateNeuronE>(PName[p], noNeurons, rateNeuronE::ParamValues(tauCa, noNeurons), iniE);
         

@@ -29,8 +29,9 @@ public:
     SET_SYNAPSE_DYNAMICS_CODE(
         "if ($(active)) {\n"
         "   $(addToInSynDelay, $(w)*$(r_pre), $(delay) );\n"
+        "   scalar tauLearn = 5000. + 30000. * exp(-15. * $(Ca_post));\n"
         // THETA: avgR is used; alternatives: population average of pre (complex), constant (.6)
-        "   $(w) += ( ($(r_pre) - $(avgR_pre)) * $(Ca_post) - $(alphaFF) * $(Ca_post) * $(Ca_post)* $(w) ) / $(tauLearn_post);\n"  // Where the fuck do I get THETA
+        "   $(w) += ( ($(r_pre) - $(avgR_pre)) * $(Ca_post) - $(alphaFF) * $(Ca_post) * $(Ca_post)* $(w) ) / tauLearn;\n"  // Implementation has r^2 not Ca
         "   $(w) = max(0., $(w));\n"
         "};\n"
     );
@@ -44,7 +45,7 @@ public:
         // +.01 unclear; used in original implementation: it could be to avoid multiplying by 0, but this can be done in the max step
         // The helper function contribution is implemented differently but mathematically equivalent
         // "$(alphaFF) += ($(alphaFF) + .01) * ( $(HFF) - "EPSILON_ALPHA" * ( 1 - "DELTA" * $(theta_post) ) ) * DT / "TAU_ALPHA";\n"
-        "$(alphaFF) += ( $(alphaFF) + .01) * ( $(HFF) - .015 + .15 * $(theta_post) ) / 50000.;\n"
+        "$(alphaFF) += ($(alphaFF) + .01) * ( $(HFF) - .015 + .15 * $(theta_post) ) / 50000.;\n"
         "$(alphaFF) = max(0., $(alphaFF));\n"
     );
 };
@@ -59,7 +60,8 @@ public:
         "if ($(active)) {\n"
         "   $(addToInSynDelay, $(w)*$(r_pre), $(delay));\n"
         // THETA: avgR is used; alternatives: population average of pre (complex), constant (.6)
-        "   $(w) += ( ( $(r_pre) - $(avgR_pre) ) * $(Ca_post) - $(alphaFB) * $(Ca_post) * $(Ca_post)* $(w) ) / $(tauLearn_post);\n"  // Where the fuck do I get THETA
+        "   scalar tauLearn = 5000. + 30000. * exp(-15. * $(Ca_post));\n"
+        "   $(w) += ( ( $(r_pre) - $(avgR_pre) ) * $(Ca_post) - $(alphaFB) * $(Ca_post) * $(Ca_post)* $(w) ) / tauLearn;\n"  // Implementation has r^2 not Ca
         "   $(w) = max(0., $(w));\n"
         "};\n"
     );
@@ -89,7 +91,7 @@ public:
     SET_SYNAPSE_DYNAMICS_CODE(
         "if ($(active)) {\n"
         "   $(addToInSynDelay, $(w)*$(r_pre), $(delay));\n"
-        "   $(w) += ( $(r_pre) * $(r_post) - $(r_pre) * max(0., $(avgR_post) - $(theta_post) ) * ( 1 + $(w) ) ) / $(tauLearn_post);\n"  // Where the fuck do I get THETA
+        "   $(w) += ( $(r_pre) * $(r_post) - $(r_pre) * max(0., $(avgR_post) - $(theta_post)) * (1+$(w)) ) / 5000;\n"  // Antihebbian just has a fixed tau huh. But still
         "   $(w) = max(0., $(w));\n"
         "};\n"
     );
