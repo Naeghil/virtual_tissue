@@ -3,7 +3,7 @@
 #include <vector>
 #include <chrono>
 
-#include "rateModel_CODE/definitions.h"
+#include "rateEvaluation_CODE/definitions.h"
 #include "parameters.h"
 #include "scene.cc"
 #include "../userproject/sharedLibraryModel.h"    // From ${GENN}/userproject/include/
@@ -16,10 +16,7 @@
 
 using namespace std;
 
-#define NO_PATCHES 200000
-#define SP_INTERVAL 100 * 5 // The base interval is 100 patches (10s) but the implementation uses 5*10 = 50s
-#define SP false
-#define RES_PATH "../RESULTS/training/"
+#define RES_PATH "../RESULTS/"
 
 void initialiseConnectivity(SharedLibraryModel<scalar> &m) {
     for (int i = 0; i < noSynapses; i++) {
@@ -30,207 +27,293 @@ void initialiseConnectivity(SharedLibraryModel<scalar> &m) {
         // Matrices
         fstream mat("./architecture/matrices/"+sName+"-"+tName, ios_base::in);
         if (!mat.is_open()) throw runtime_error("  Matrix file could not be opened.");
+        fstream weights("../RESULTS/training/"+sName+"-"+tName+"weights.vec", ios_base::in)
+        if (!mat.is_open()) throw runtime_error("  Weights file could not be opened.");
         m.pullVarFromDevice(sName+"_"+tName, "active");
+        m.pullVarFromDevice(sName+"_"+tName, "w");
         auto conn = m.getArray<bool>("active"+sName+"_"+tName);
+        auto w = m.getArray<scalar>("w"+sName+"_"+tName);
         int noS = pow(side[syn[0]],2)*depth[syn[0]];
         int noT = pow(side[syn[1]],2)*depth[syn[1]];
-        scalar c;
+        scalar c; scalar k;
         for (int s = 0; s < noS; s++) for (int t = 0; t < noT; t++) {
-            mat >> c;
-            conn[s*noT + t] = c > .5;
+            mat >> c; conn[s*noT + t] = c > .5;
+            weights >> k; w[s*noT + t] = k;
         }
         m.pushVarToDevice(sName+"_"+tName, "active");
+        m.pushVarToDevice(sName+"_"+tName, "w");
     } 
 }
 
+void initialiseNeurons(SharedLibraryModel<scalar> &m) {
+    for (int p = 0; p < PMax; p++) {
+        fstream theta("../RESULTS/training/theta"+PName[p]);
+        if (!theta.is_open()) throw runtime_error("Theta file could not be opened.");
+        fstream a("../RESULTS/training/a"+PName[p]);
+        if (!a.is_open()) throw runtime_error("A file could not be opened.");
+        m.pullVarFromDevice(PName[p], "theta");
+        m.pullVarFromDevice(PName[p], "a");
+        auto thp = m.getArray<scalar>("theta"+PName[p]);
+        auto ap = m.getArray<scalar>("a"+PName[p]);
+        int dim = pow(side[p],2)*depth[p];
+        scalar t; scalar k;
+        for(int i=0; i < dim; i++) {
+            theta >> t; thp[i] = t;
+            a >> k; ap[i] = k;
+        }
+        m.pushVarToDevice(PName[p],"theta");
+        m.pushVarToDevice(PName[p],"a");
+    }
+}
+
 void presentPatch(SharedLibraryModel<scalar> &m, iMat patch) {
-    m.pullVarFromDevice("LGN", "r");
-    scalar *iRates = m.getArray<scalar>("rLGN");
+    resetActivities(m);
+    m.pullVarFromDevice("LGN", "input");
+    scalar *iRates = m.getArray<scalar>("inputLGN");
     for (int y = 0; y < side[LGN]; y++) for (int x = 0; x < side[LGN]; x ++) for (int z = 0; z < 2; z ++) iRates[y*2*side[LGN] + 2*x + z] = patch[y][x][z];
-    m.pushVarToDevice("LGN","r");
+    m.pushVarToDevice("LGN","input");
 }
 
-// Global variables because yes
-unordered_map<string, vector<scalar>> rAvg;
-unordered_map<string, vector<vector<float>>> rBins;
-unordered_map<string, vector<vector<int>>> rDists;
-unordered_map<string, vector<scalar>> wAvg;
-unordered_map<string, vector<vector<float>>> wBins;
-unordered_map<string, vector<vector<int>>> wDists;
-
-
-
-
-// The save function is NOT for the purpose of restarting a simulation from a certain point
-// Rather to observe the results of the simulation
-vector<scalar> makeHist(scalar *arr, int dim, vector<int> &counts, bool *mask = nullptr, bool nonzero = false) {
-    scalar delta = .0;
-    for (int i = 0; i<dim; i++) if (arr[i] > delta) delta = arr[i];
-    delta /= 100.;
-    vector<scalar> bins(101, .0);
-    for (int i = 0; i<101; i++) bins[i] = delta*i;
-    for (int i=0; i<dim; i++) {
-        if (nonzero && !mask[i]) continue;
-        int idx = (delta == .0) ? 0 : int(arr[i] / delta);
-        counts[idx]++;
-    }
-    return bins;
-}
-
-void saveNetwork(SharedLibraryModel<scalar> &m) {
-    // Neurons
-    string n;
-    int dim;
-    scalar *arr;
+void resetActivities(SharedLibraryModel<scalar> &m, scalar FB = 1.) {
     for (int p = 0; p < PMax; p++) {
-        scalar avg = 0;
-        vector<int> counts(100, 0); 
-        n = PName[p]; dim = side[p]*side[p]*depth[p]; 
-        m.pullVarFromDevice(n, "r"); arr = m.getArray<scalar>("r"+n);
-        // Histograms
-        rBins[n].push_back(makeHist(arr, dim, counts));
-        rDists[n].push_back(counts);
-        // Average
-        for (int i = 0; i < dim; i++) avg += arr[i];
-        rAvg[n].push_back(avg/dim);
-    }
-    // Synapses
-    for (int syn = 0; syn < noSynapses; syn++) {
-        scalar avg = 0;
-        int count = 0;
-        vector<int> counts(100, 0);
-        int s = Synapses[syn][0]; int t = Synapses[syn][1];
-        string sN = string(PName[s])+"-"+string(PName[t]);
-        dim = side[s] * side[s] * depth[s] * side[t] * side[t] * depth[t];
-        m.pullVarFromDevice(string(PName[s]) + "_" + string(PName[t]), "w");
-        arr = m.getArray<scalar>("w"+string(PName[s]) + "_" + string(PName[t]));
-        bool *mask = m.getArray<bool>("active"+string(PName[s]) + "_" + string(PName[t]));
-        // Histograms
-        wBins[sN].push_back(makeHist(arr, dim, counts, mask, true));
-        wDists[sN].push_back(counts);
-        for (int i = 0; i < dim; i ++) if (mask[i]) {
-                avg += arr[i];
-                count++;
+        int dim = pow(side[p],2)*depth[p];
+        m.pullVarFromDevice(PName[p], "r");
+        auto arr = m.getArray<scalar>("r"+string(PName[p]));
+        for (int i=0; i < dim; i++) arr[i] = 0.;
+        m.pushVarToDevice(PName[p],"r");
+        if (p==LGN) {
+            m.pullVarFromDevice(PName[p], "input");
+            auto arr = m.getArray<scalar>("input"+string(PName[p]));
+            for (int i=0; i < dim; i++) arr[i] = 0.;
+            m.pushVarToDevice(PName[p],"input");
+        } else {
+            m.pullVarFromDevice(PName[p], "m");
+            auto arr = m.getArray<scalar>("m"+string(PName[p]));
+            for (int i=0; i < dim; i++) arr[i] = 0.;
+            m.pushVarToDevice(PName[p],"m");
+            m.pullVarFromDevice(PName[p], "FB");
+            auto arr = m.getArray<scalar>("FB"+string(PName[p]));
+            for (int i=0; i < dim; i++) arr[i] = FB;
+            m.pushVarToDevice(PName[p],"FB");
         }
-        wAvg[sN].push_back(avg/count);
+    }
+    m.stepTime(); // This should reset iSyn
+}
+
+// Global variables because yes 
+unordered_map<string, vector<vector<scalar>>> rates30FBon;
+unordered_map<string, vector<vector<scalar>>> rates30FBoff;
+unordered_map<string, vector<vector<scalar>>> rates42FBon;
+unordered_map<string, vector<vector<scalar>>> rates42FBoff;
+unordered_map<string, vector<vector<scalar>>> rates100FBon;
+unordered_map<string, vector<vector<scalar>>> rates100FBoff;
+
+void record(SharedLibraryModel<scalar> &m, unordered_map<string, vector<vector<scalar>>> &r) {
+    for (int p=0; p < PMax-1; p++) {
+        int dim = pow(side[p],2)*depth[p];
+        vector<scalar> rate(dim);
+        m.pullVarFromDevice(PName[p],"r");
+        auto arr = m.getArray<scalar>("r"+string(PName[p]));
+        for (int i=0; i<dim; i++) rate[i] = arr[i];
+        r[PName[p]].push_back(rate);
     }
 }
 
-void writeResults(SharedLibraryModel<scalar> &m) {
-    // Rates
-    ofstream f(RES_PATH + string("avgRates.tsv"), ios::out);
-    if (!f.is_open()) throw runtime_error("Cannot save simulation results.");
-    for (int p = 0; p < PMax; p++) f << PName[p] << "\t"; 
-    f << "\n";
-    for (int i = 0; i < int(rAvg["LGN"].size()); i++) { 
-        for (int p = 0; p < PMax; p++) f << rAvg[PName[p]][i] << "\t"; 
-        f << "\n"; 
-    } f.close();
-    
-    // Weights
-    f = ofstream(RES_PATH + string("avgWeights.tsv"), ios::out);
-    if (!f.is_open()) throw runtime_error("Cannot save simulation results.");
-    for (int s = 0; s < noSynapses; s++) f << string(PName[Synapses[s][0]])+"-"+string(PName[Synapses[s][1]]) << "\t"; 
-    f << "\n";
-    for (int i = 0; i < int(wAvg["LGN-V1L4E"].size()); i++) { 
-        for (int s = 0; s < noSynapses; s++) f << wAvg[string(PName[Synapses[s][0]])+"-"+string(PName[Synapses[s][1]])][i] << "\t"; 
-        f << "\n"; 
-    } f.close();
+void recordDelays(SharedLibraryModel<scalar> &m, unordered_map<string, vector<vector<scalar>>> &r) {
+    // Delays are known
+    for (int _ = 0; _ < 2; _++) m.stepTime(); // +2
+    // V1L4E
+    int dim = pow(side[V1L4E],2)*depth[V1L4E];
+    vector<scalar> rate(dim);
+    m.pullVarFromDevice(PName[V1L4E],"r");
+    auto arr = m.getArray<scalar>("r"+string(PName[V1L4E]));
+    for (int i=0; i<dim; i++) rate[i] = arr[i];
+    r[PName[V1L4E]].push_back(rate);
+    // V1L4I
+    dim = pow(side[V1L4I],2)*depth[V1L4I];
+    rate = vector<scalar>(dim);
+    m.pullVarFromDevice(PName[V1L4I],"r");
+    auto arr = m.getArray<scalar>("r"+string(PName[V1L4I]));
+    for (int i=0; i<dim; i++) rate[i] = arr[i];
+    r[PName[V1L4I]].push_back(rate);
 
-    // TODO: add mean and sd
-    // Distributions: they are just two vectors each 
-    for (int p = 0; p < PMax; p++) {
-        string pN = PName[p];
-        f = ofstream(RES_PATH + pN + string("dist.vec"), ios::out);
-        if (!f.is_open()) throw runtime_error("Cannot save simulation results.");
-        for (int i = 0; i < int(rDists[pN].size()); i++) {
-            for (int k = 0; k < 100; k++) f << rDists[pN][i][k] << " ";
+    for (int _ = 0; _ < 2; _++) m.stepTime(); // +2
+    // V1L23E
+    dim = pow(side[V1L23E],2)*depth[V1L23E];
+    rate = vector<scalar>(dim);
+    m.pullVarFromDevice(PName[V1L23E],"r");
+    auto arr = m.getArray<scalar>("r"+string(PName[V1L23E]));
+    for (int i=0; i<dim; i++) rate[i] = arr[i];
+    r[PName[V1L23E]].push_back(rate);
+    // V1L23I
+    dim = pow(side[V1L23I],2)*depth[V1L23I];
+    rate = vector<scalar>(dim);
+    m.pullVarFromDevice(PName[V1L23I],"r");
+    arr = m.getArray<scalar>("r"+string(PName[V1L23I]));
+    for (int i=0; i<dim; i++) rate[i] = arr[i];
+    r[PName[V1L23I]].push_back(rate);
+
+    for (int _ = 0; _ < 3; _++) m.stepTime(); // +3
+    // V2L4E
+    dim = pow(side[V2L4E],2)*depth[V2L4E];
+    rate = vector<scalar>(dim);
+    m.pullVarFromDevice(PName[V2L4E],"r");
+    arr = m.getArray<scalar>("r"+string(PName[V2L4E]));
+    for (int i=0; i<dim; i++) rate[i] = arr[i];
+    r[PName[V2L4E]].push_back(rate);
+    // V2L4I
+    dim = pow(side[V2L4I],2)*depth[V2L4I];
+    rate = vector<scalar>(dim);
+    m.pullVarFromDevice(PName[V2L4I],"r");
+    arr = m.getArray<scalar>("r"+string(PName[V2L4I]));
+    for (int i=0; i<dim; i++) rate[i] = arr[i];
+    r[PName[V2L4I]].push_back(rate);
+
+    for (int _ = 0; _ < 2; _++) m.stepTime(); // +2
+    // V2L23E
+    dim = pow(side[V2L23E],2)*depth[V2L23E];
+    rate = vector<scalar>(dim);
+    m.pullVarFromDevice(PName[V2L23E],"r");
+    arr = m.getArray<scalar>("r"+string(PName[V2L23E]));
+    for (int i=0; i<dim; i++) rate[i] = arr[i];
+    r[PName[V2L23E]].push_back(rate);
+    // V2L23I
+    dim = pow(side[V2L23I],2)*depth[V2L23I];
+    rate = vector<scalar>(dim);
+    m.pullVarFromDevice(PName[V2L23I],"r");
+    arr = m.getArray<scalar>("r"+string(PName[V2L23I]));
+    for (int i=0; i<dim; i++) rate[i] = arr[i];
+    r[PName[V2L23I]].push_back(rate);
+}
+
+void writeResults(string path) {
+    for (int p=0; p<PMax-1; p++) {
+        int dim = pow(side[p],2)*depth[p];
+        // t30on
+        ofstream f(RES_PATH+path+string("30on")+string(PName[p]));
+        for (int t = 0; t < rates30FBon[PName[p]].size(); t++) {
+            for (int k=0; k<dim; k++) f << rates30FBon[PName[p]][t][k] << " ";
             f << "\n";
-            for (int k = 0; k < 101; k++) f << rBins[pN][i][k] << " ";
+        } f.close();
+        // t30off
+        ofstream f(RES_PATH+path+string("30off")+string(PName[p]));
+        for (int t = 0; t < rates30FBoff[PName[p]].size(); t++) {
+            for (int k=0; k<dim; k++) f << rates30FBoff[PName[p]][t][k] << " ";
             f << "\n";
-        }
-        f.close();
-    }
-    for (int s = 0; s < noSynapses; s++) {
-        string sN = string(PName[Synapses[s][0]])+"-"+string(PName[Synapses[s][1]]);
-        f = ofstream(RES_PATH + sN + string("dist.vec"), ios::out);
-        if (!f.is_open()) throw runtime_error("Cannot save simulation results.");
-        for (int i = 0; i < int(wDists[sN].size()); i++) {
-            for (int k = 0; k < 100; k++) f << wDists[sN][i][k] << " ";
+        } f.close();
+        // t42on
+        ofstream f(RES_PATH+path+string("42on")+string(PName[p]));
+        for (int t = 0; t < rates42FBon[PName[p]].size(); t++) {
+            for (int k=0; k<dim; k++) f << rates42FBon[PName[p]][t][k] << " ";
             f << "\n";
-            for (int k = 0; k < 101; k++) f << wBins[sN][i][k] << " ";
+        } f.close();
+        // t42off
+        ofstream f(RES_PATH+path+string("42off")+string(PName[p]));
+        for (int t = 0; t < rates42FBoff[PName[p]].size(); t++) {
+            for (int k=0; k<dim; k++) f << rates42FBof[PName[p]][t][k] << " ";
+            f << "\n";
+        } f.close();
+        // t100on
+        ofstream f(RES_PATH+path+string("100on")+string(PName[p]));
+        for (int t = 0; t < rates100FBon[PName[p]].size(); t++) {
+            for (int k=0; k<dim; k++) f << rates100FBon[PName[p]][t][k] << " ";
+            f << "\n";
+        } f.close();
+        // t100off
+        ofstream f(RES_PATH+path+string("100off")+string(PName[p]));
+        for (int t = 0; t < rates100FBoff[PName[p]].size(); t++) {
+            for (int k=0; k<dim; k++) f << rates100FBof[PName[p]][t][k] << " ";
             f << "\n";
         } f.close();
     }
-
-    // Save matrix weights: this is both for analysis and for evaluation initialisation purposes
-    for (int s = 0; s < noSynapses; s++) {
-        int src = Synapses[s][0]; int trg = Synapses[s][1];
-        string sName = PName[src]; string tName = PName[trg];
-        int sDim = side[src] * side[src] * depth[src];
-        int tDim = side[trg] * side[trg] * depth[trg];
-
-        scalar *weights = m.getArray<scalar>("w"+sName+"_"+tName);
-        ofstream f(RES_PATH+sName+"-"+tName+"weights.vec");
-        if (!f.is_open()) throw runtime_error("Cannot save simulation results.");
-        for (int i = 0; i < sDim; i++) {
-            for (int k = 0; k < tDim; k++) f << weights[i*tDim + k] << " "; 
-            f << "\n";
-        } f.close();
-    }
 }
+
+int noSets = 10;
+string *sets = {"MNIST_train","MNIST_test","CIFAR-10_test_gray","CIFAR-10_train_gray","SVHN_test","SVHN_train","EMNIST_test","EMNIST_train","ETH80_gray_vector","CalTec101_subset"};
+int *noImages = {60000,10000,10000,50000,26032,73257,18800,112800,3280,1233};
+int tileCut = 8; // sets after this are tiled; sets before this are cut
 
 int main() {
     srand(42); // Set seed
 
     // Model setup
-    SharedLibraryModel<float> model("./", "rateModel");
+    SharedLibraryModel<float> model("./", "rateEvaluation");
     cout << "Initialise model\n";
     model.allocateMem();
     model.initialize();
-    cout << "Initialise connectivity\n";
+    cout << "Initialise network\n";
     initialiseConnectivity(model);
+    initialiseNeurons(model);
     
-    // Recorders setup 
-    for (int p = 0; p < PMax; p++) {
-        rAvg[PName[p]] = vector<scalar>(0);
-        rDists[PName[p]] = vector<vector<int>>(0);
-        rBins[PName[p]] = vector<vector<scalar>>(0);
-    }
-    for (int s = 0; s < noSynapses; s++) {
-        string n = string(PName[Synapses[s][0]]) + "-" + string(PName[Synapses[s][1]]);
-        wAvg[n] = vector<scalar>(0);
-        wDists[n] =  vector<vector<int>>(0);
-        wBins[n] =  vector<vector<scalar>>(0);
-    }
-
-    // Training setup
-    Scene image("IMAGES_NORM2015");  // Training scene
-    auto start = chrono::high_resolution_clock::now();
-    auto lastPatchgroup = start;
-
-    // Training protocol
-    for (int p = 0; p < NO_PATCHES; p++) {
-        // Record midway
-        if (p%1000 == 0) {
-            cout << "Patch no " << p << "/" << NO_PATCHES <<endl;
-            auto newTime = chrono::high_resolution_clock::now();
-            double diff = chrono::duration_cast<chrono::microseconds>(newTime - lastPatchgroup).count()/1000.;
-            cout << "  " << diff/1000. << "ms per patch at " << diff/100000 << " acceleration" << endl;
-            lastPatchgroup = newTime;
-            saveNetwork(model);
-            newTime = chrono::high_resolution_clock::now();
-            cout << "  Network saved. IO time: " << chrono::duration_cast<chrono::microseconds>(newTime - lastPatchgroup).count()/1000. << "ms" << endl;
-            sleep(10); // Don't want your computer to overheat
-            lastPatchgroup = chrono::high_resolution_clock::now();
+    for(int d=0; d < tileCut; d++) {
+        cout << "Evaluating dataset " << sets[d] << endl;
+        // Setup
+        for (int p = 0; p < PMax-1; p++) {
+            rates30FBon[PName[p]] = vector<vector<scalar>>(); 
+            rates30FBoff[PName[p]] = vector<vector<scalar>>();
+            rates42FBon[PName[p]] = vector<vector<scalar>>();
+            rates42FBoff[PName[p]] = vector<vector<scalar>>();
+            rates100FBon[PName[p]] = vector<vector<scalar>>();
+            rates100FBoff[PName[p]] = vector<vector<scalar>>();
         }
-        presentPatch(model, image.saccade());  // Adjust LGN rates for input
-        for (int _ = 0; _ < 100; _++) model.stepTime();  // Simulate
+        Scene scene(sets[d], noImages[d], false); // TODO: adapt
+        int img = 0;
+        while ((img = scene.next()) > 0) { // All images
+            if (img%100 == 0) cout << "  image " << img << "/" << noImages[d] << endl; 
+            auto in = scene.patch();
+            // FB on
+            presentPatch(model, in, 1.);
+            for (int _ = 0; _ < 30; _++) m.stepTime();
+            record(m, rates30FBon);
+            for (int _ = 0; _ < 12; _++) m.stepTime();
+            recordDelays(m, rates42FBon);
+            for (int _ = 0; _ < 49; _++) m.stepTime();
+            record(m, rates100FBon);
+            // FB off
+            presentPatch(model, in, 0.);
+            for (int _ = 0; _ < 30; _++) m.stepTime();
+            record(m, rates30FBoff);
+            for (int _ = 0; _ < 12; _++) m.stepTime();
+            recordDelays(m, rates42FBoff);
+            for (int _ = 0; _ < 49; _++) m.stepTime();
+            record(m, rates100FBoff);
+        }
+        writeResults("eval/"+sets[d])
     }
-    saveNetwork(model);
-    // All weights should be already pulled
-    writeResults(model);
-
-
+    for(int d=tileCut; d<noSets; d++) {
+        Scene scene(sets[d], noImages[d], true); // TODO: adapt
+        int img = 0;
+        while ((img = scene.next()) > 0) {
+            if (img%100 == 0) cout << "  image " << img << "/" << noImages[d] << endl;
+            for (int p = 0; p < PMax-1; p++) {
+                rates30FBon[PName[p]] = vector<vector<scalar>>(); 
+                rates30FBoff[PName[p]] = vector<vector<scalar>>();
+                rates42FBon[PName[p]] = vector<vector<scalar>>();
+                rates42FBoff[PName[p]] = vector<vector<scalar>>();
+                rates100FBon[PName[p]] = vector<vector<scalar>>();
+                rates100FBoff[PName[p]] = vector<vector<scalar>>();
+            }
+            while(scene.nextTile()) {
+                auto in = scene.patch();
+                // FB on
+                presentPatch(model, in, 1.);
+                for (int _ = 0; _ < 30; _++) m.stepTime();
+                record(m, rates30FBon);
+                for (int _ = 0; _ < 12; _++) m.stepTime();
+                recordDelays(m, rates42FBon);
+                for (int _ = 0; _ < 49; _++) m.stepTime();
+                record(m, rates100FBon);
+                // FB off
+                presentPatch(model, in, 0.);
+                for (int _ = 0; _ < 30; _++) m.stepTime();
+                record(m, rates30FBoff);
+                for (int _ = 0; _ < 12; _++) m.stepTime();
+                recordDelays(m, rates42FBoff);
+                for (int _ = 0; _ < 49; _++) m.stepTime();
+                record(m, rates100FBoff);
+            }
+            writeResults("eval/"+sets[d]+"/"+to_string(img));
+        }
+    }
     return 0;
 }

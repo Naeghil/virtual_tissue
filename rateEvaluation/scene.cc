@@ -9,8 +9,6 @@
 
 #include "parameters.h"
 
-#define IMAGE_PATCHES 10
-
 using namespace std;
 
 typedef vector<vector<vector<float>>> iMat;
@@ -18,71 +16,58 @@ typedef vector<vector<vector<float>>> iMat;
 
 class Scene {
     public:
-        Scene(string path = "IMAGES_NORM2015", int imgNo = 10, bool norm = false) : iPath("../DATA/"+path+"/"), noImages(imgNo), toNorm(norm) {
-            noCurrentPatch = IMAGE_PATCHES;  // First saccade draws a new image 
-            rng = mt19937(random_device()());
-            rDist = normal_distribution<double>(0, 2); // 0,2 in the original
-            tDist = uniform_real_distribution<double>();
-            coord = vector<int>(2,0);
+        Scene(string path, int imgNo, bool tile) : iPath("../DATA/"+path+"/"), noImages(imgNo), tiling(tile) {
+            currentImage = 0;
         }
 
-        iMat saccade() {
-            if (noCurrentPatch >= IMAGE_PATCHES) newImage();   // Get patch from new image
-            else changeSaccade();                           // Get new patch from same image
+        iMat patch() {
             iMat patch(side[LGN], vector<vector<float>>(side[LGN], vector<float>(2,.0)));
-            for (int yo = 0; yo < side[LGN]; yo++) for (int xo = 0; xo < side[LGN]; xo++) for (int z = 0; z < 2; z++) patch[yo][xo][z] = image[coord[1]+yo][coord[0]+xo][z];
-            noCurrentPatch++;
+            if (tiling) { // Tiled images are always bigger
+                for (int yo = 0; yo < side[LGN]; yo++) for (int xo = 0; xo < side[LGN]; xo++) for (int z = 0; z < 2; z++) {
+                    if ((coord[1]+yo >= image.size()) || (coord[0]+xo >= image[0].size())) continue;
+                    patch[yo][xo][z] = image[coord[1]+yo][coord[0]+xo][z];
+                }    
+            } else { // Cut images are always smaller or same as, never bigger
+                for (int yo = 0; yo < image[0].size(); yo++) for (int xo = 0; xo < image.size(); xo++) for (int z = 0; z < 2; z++) {
+                    patch[coord[1]+yo][coord[0]+xo][z] = image[yo][xo][z];
+                }
+            }
             return patch;
         }
 
-        int getPatchNo() { return noCurrentPatch; }
-
-    private:
-        // Set parameters
-        string iPath;   // Where it is
-        int noImages;   // How many images are in the set
-        bool toNorm;    // Is normalisation required
-        // Current scene
-        iMat image;
-        double maxValue;
-        int noCurrentPatch;
-        // Saccades
-        vector<int> coord;
-        mt19937 rng;
-        normal_distribution<double> rDist;
-        uniform_real_distribution<double> tDist;
-
-        void changeSaccade() {
-            int y, x;
-            do {
-                double r =  rDist(rng); 
-                double theta =  tDist(rng) * M_PI * 2;
-                y = coord[0] + int(round(r * sin(theta)));
-                x = coord[1] + int(round(r * cos(theta)));
-            } while (x < 0 || y < 0 || x > (int(image[0].size()) - side[LGN]) || y > (int(image.size()) - side[LGN]) || (x == 0 && y == 0));
-            coord[0] = y; coord[1] = x;
-        }
-
-        // TODO: re-evaluate when evaluation images are introduced, but it should be the preprocessing's responsibility to adapt to this
-        void newImage() {
-            int imgNo = rand()%noImages;
-            ifstream mat(iPath+to_string(imgNo));
-            if (!mat.is_open()) throw runtime_error(iPath+to_string(imgNo)+" not found.");
+        int next() {
+            if (currentImage == noImages -1) return -1;
+            ifstream mat(iPath+to_string(currentImage));
+            if (!mat.is_open()) throw runtime_error(iPath+to_string(currentImage)+" not found.");
             string sp;
             mat >> sp >> maxValue;
             int height; mat >> sp >> height;
             int width; mat >> sp >> width;
             image = iMat(height, vector<vector<float>>(width, vector<float>(2,.0)));  // this is because of indexing in flattened version y*width + 2x + z
-            for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) for (int z = 0; z < 2; z++) {
-                mat >> image[y][x][z];
-                // if (toNorm) TODO: the thing ;
-            }
-            noCurrentPatch = 0;
-            do {  // Initial patch coordinates
-                coord[0] = rand() % (image.size() - side[LGN]);
-                coord[1] = rand() % (image[0].size() - side[LGN]);
-            } while (coord[0] == 0 && coord[1] == 0);
+            for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) for (int z = 0; z < 2; z++) mat >> image[y][x][z];
+            if (tiling) coord = vector<int>{0,-side[LGN]}; // initial for the tiling
+            else coord = vector<int>{int(abs(height-side[LGN])/2),int(abs(width-side[LGN])/2)}; // coordinates for the cut
+            currentImage++;
         }
+
+        bool nextTile() {
+            coord[1] += side[LGN]; // Slide x
+            if (coord[1] >= image[0].size()) coord = vector<int>{coord[0]+=side[LGN], 0}; // Slide y
+            return (coord[0] >= image.size());
+        }
+
+
+    private:
+        // Set parameters
+        string iPath;   // Where it is
+        int noImages;   // How many images are in the set
+        // Current scene
+        iMat image;
+        int currentImage;
+        // Tiles
+        bool tiling;
+        vector<int> coord;
+        vector<int> noTiles;
 
 };
 
