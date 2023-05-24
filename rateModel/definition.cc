@@ -12,7 +12,7 @@ void addSyn(ModelSpec &m, Populations s, Populations t, int d, STypes type, doub
     if (s%2==0) {   // Excitatory
         double alphainit = 1.;
         // Unclear what alphadisc is; initialised as such in the original implementation
-        if (alphadisc != .0)  alphainit = alphadisc / (pow(RF[type][tLayer]*RF[type][tLayer]*depth[s], .5) * Ew);
+        if (alphadisc != .0)  alphainit = alphadisc / (sqrt(RF[type][tLayer]*RF[type][tLayer]*depth[s]) * Ew);
         if(type!=FB) {  // Feedforward and Lat
             ExcitatoryFF::VarValues s_ini(initVar<InitVarSnippet::Uniform>({0.,2*Ew}), .0, d);
             ExcitatoryFF::PostVarValues p_ini({alphainit, .0, gammac});
@@ -40,9 +40,10 @@ void modelDefinition(ModelSpec &model)
     model.setDT(1);
     model.setName("rateModel");
     // NEURONS
-    model.addNeuronPopulation<rateInput>("LGN", side[LGN]*side[LGN]*depth[LGN], {}, rateInput::VarValues(.0, .0, .0));
-    rateNeuronE::VarValues iniE(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1., /*Ca*/.0, /*avgR*/.0);
-    rateNeuronI::VarValues iniI(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1., /*Ca*/.0, /*avgR*/.0);
+    // Watch out for initial averages
+    model.addNeuronPopulation<rateInput>("LGN", side[LGN]*side[LGN]*depth[LGN], {}, rateInput::VarValues(.0, .09, .0));
+    rateNeuronE::VarValues iniE(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1., /*Ca*/.06, /*avgR*/.06);
+    rateNeuronI::VarValues iniI(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1., /*Ca*/.06, /*avgR*/.06);
     for (int p = 0; p < PMax-1; p++) {  // tauCa changes by layer
         int noNeurons = side[p]*side[p]*depth[p];
         double tauCa = 10.;
@@ -50,8 +51,8 @@ void modelDefinition(ModelSpec &model)
         if (p%2 == 1) model.addNeuronPopulation<rateNeuronI>(PName[p], noNeurons, rateNeuronI::ParamValues(tauCa, noNeurons), iniI);
         else model.addNeuronPopulation<rateNeuronE>(PName[p], noNeurons, rateNeuronE::ParamValues(tauCa, noNeurons), iniE);
         
-        model.addSynapsePopulation<dirAvg, diravgPS>(std::string(PName[p])+"avg", SynapseMatrixType::DENSE_INDIVIDUALG, 0, PName[p], PName[p], {}, {}, {}, {});
-        model.addSynapsePopulation<sqrAvg, sqravgPS>(std::string(PName[p])+"sqavg", SynapseMatrixType::DENSE_INDIVIDUALG, 0, PName[p], PName[p], {}, {}, {}, {});
+//        model.addSynapsePopulation<dirAvg, diravgPS>(std::string(PName[p])+"avg", SynapseMatrixType::DENSE_INDIVIDUALG, 0, PName[p], PName[p], {}, {}, {}, {});
+//        model.addSynapsePopulation<sqrAvg, sqravgPS>(std::string(PName[p])+"sqavg", SynapseMatrixType::DENSE_INDIVIDUALG, 0, PName[p], PName[p], {}, {}, {}, {});
     }
     // SYNAPSES
     // --Feedforward pathway--

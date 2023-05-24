@@ -91,7 +91,8 @@ public:
     SET_SYNAPSE_DYNAMICS_CODE(
         "if ($(active)) {\n"
         "   $(addToInSynDelay, $(w)*$(r_pre), $(delay));\n"
-        "   $(w) += ( $(r_pre) * $(r_post) - $(r_pre) * max(0., $(avgR_post) - $(theta_post)) * (1+$(w)) ) / 5000;\n"  // Antihebbian just has a fixed tau huh. But still
+//        "   $(w) += ( $(r_pre) * $(r_post) - $(r_pre) * .06 * (1+$(w)) ) / 5000;\n"
+        "   $(w) += ( $(r_pre) * $(r_post) - $(r_pre) * max($(rAvg_post) - $(theta_post),.0) * (1+$(w)) ) / 5000;\n"
         "   $(w) = max(0., $(w));\n"
         "};\n"
     );
@@ -119,7 +120,7 @@ class inhPS : public PostsynapticModels::Base {
 };
 IMPLEMENT_MODEL(inhPS);
 
-
+/*
 // "Fake" synapses to accumulate averages
 class dirAvg : public WeightUpdateModels::Base {
 public:
@@ -146,3 +147,4 @@ class sqravgPS : public PostsynapticModels::Base {
     SET_APPLY_INPUT_CODE("$(sqPopAvg) += $(inSyn); $(inSyn) = 0;");
 };
 IMPLEMENT_MODEL(sqravgPS);
+*/

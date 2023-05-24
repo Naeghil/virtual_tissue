@@ -6,7 +6,6 @@
 #include "parameters.h"    
 
 void addSyn(ModelSpec &m, Populations s, Populations t, int d, STypes type) {
-    auto tLayer = Layers(t/2);
     SynapseGroup *syn;
     synapse::VarValues s_ini(.0, .0, d);
     std::string sName = std::string(PName[s])+"_"+std::string(PName[t]);
@@ -23,8 +22,8 @@ void modelDefinition(ModelSpec &model)
     model.setName("rateEvaluation");
     // NEURONS
     model.addNeuronPopulation<rateInput>("LGN", side[LGN]*side[LGN]*depth[LGN], {}, rateInput::VarValues(.0, .0));
-    rateNeuronE::VarValues iniE(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1., 1.);
-    rateNeuronI::VarValues iniI(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1., 1.);
+    rateNeuronE::VarValues iniE(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1.);
+    rateNeuronI::VarValues iniI(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1.);
     for (int p = 0; p < PMax-1; p++) {  // tauCa changes by layer
         int noNeurons = side[p]*side[p]*depth[p];
         if (p%2 == 1) model.addNeuronPopulation<rateNeuronI>(PName[p], noNeurons, {}, iniI);

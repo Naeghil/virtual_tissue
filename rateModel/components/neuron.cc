@@ -48,11 +48,13 @@ public:
 
         //"scalar drift = ($(theta) > 0) ? .01 : -.01;\n"
         // "$(theta) +=  ( ( $(r) - $(thetaTarget ) - "EPSILON" * sign) * dt / "TAU_IP" ;\n"
-        "$(theta) +=  ( $(r) - ($(popAvg)/$(noNeurons)) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // TODO: change    
+        //"$(theta) +=  ( $(r) - ($(popAvg)/$(noNeurons)) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // TODO: change    
+        "$(theta) +=  ( $(r) - $(avgR) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Better result    
 
         //"drift = ($(a) > 1) ? .01 : -.01;\n"
         // "$(a) += ( ( $(aTarget) - $(r) * $(r) ) - "EPSILON" * sign) * dt / "TAU_IP";\n"
-         "$(a) += ( ($(sqPopAvg)/$(noNeurons)) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // TODO: change
+        //"$(a) += ( ($(sqPopAvg)/$(noNeurons)) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // TODO: change
+        "$(a) += ( $(avgR)*$(avgR) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Better result
 
         // "$(avgR) += ($(r) - $(avgR))*dt/"TAU_AVG";\n" // Exponential moving average
         "$(avgR) += ( $(r) - $(avgR) ) / 50000.;\n"
@@ -82,11 +84,13 @@ public:
     
         //"scalar drift = ($(theta) > 0) ? .01 : -.01;\n"
         // "$(theta) +=  ( ( $(r) - $(thetaTarget ) - "EPSILON" * sign) * dt / "TAU_IP" ;\n"
-        "$(theta) +=  ( $(r) - ($(popAvg) / $(noNeurons)) - (($(theta) > 0) ? .01 : -.01) ) / 10000. ;\n"  // TODO: change    
+        //"$(theta) +=  ( $(r) - ($(popAvg)/$(noNeurons)) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // TODO: change    
+        "$(theta) +=  ( $(r) - $(avgR) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Better result    
 
         //"drift = ($(a) > 1) ? .01 : -.01;\n"
         // "$(a) += ( ( $(aTarget) - $(r) * $(r) ) - "EPSILON" * sign) * dt / "TAU_IP";\n"
-         "$(a) += ( ($(sqPopAvg)/$(noNeurons)) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // TODO: change
+        //"$(a) += ( ($(sqPopAvg)/$(noNeurons)) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // TODO: change
+        "$(a) += ( $(avgR)*$(avgR) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Better result
 
         // "$(avgR) += ($(r) - $(avgR))*dt/"TAU_AVG";\n" // Exponential moving average
         "$(avgR) += ( $(r) - $(avgR) ) / 50000.;\n"

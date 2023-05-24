@@ -94,28 +94,9 @@ void saveNetwork(SharedLibraryModel<scalar> &m) {
         for (int i=0; i < dim; i++) f << arr[i] << " ";
         f << "\n";
         f.close();
-        if (n!="LGN") {
-            f.open(RES_PATH+string("theta")+n, ios::ate);
-            if (!f.is_open()) throw runtime_error("Cannot save data.");
-            arr = m.getArray<scalar>("theta"+n);
-            for (int i=0; i < dim; i++) f << arr[i] << " ";
-            f << "\n";
-            f.close();
-            f.open(RES_PATH+string("a")+n, ios::ate);
-            if (!f.is_open()) throw runtime_error("Cannot save data.");
-            arr = m.getArray<scalar>("a"+n);
-            for (int i=0; i < dim; i++) f << arr[i] << " ";
-            f << "\n";
-            f.close();
-            f.open(RES_PATH+string("Ca")+n, ios::ate);
-            if (!f.is_open()) throw runtime_error("Cannot save data.");
-            arr = m.getArray<scalar>("Ca"+n);
-            for (int i=0; i < dim; i++) f << arr[i] << " ";
-            f << "\n";
-            f.close();
-        }
 
-        /* m.pullVarFromDevice(n, "r");*/ arr = m.getArray<scalar>("r"+n);
+        m.pullVarFromDevice(n, "r");
+        arr = m.getArray<scalar>("r"+n);
         // Histograms
         rBins[n].push_back(makeHist(arr, dim, counts));
         rDists[n].push_back(counts);
@@ -156,7 +137,7 @@ void writeResults(SharedLibraryModel<scalar> &m) {
         for (int p = 0; p < PMax; p++) f << rAvg[PName[p]][i] << "\t"; 
         f << "\n"; 
     } f.close();
-    
+
     // Weights
     f = ofstream(RES_PATH + string("avgWeights.tsv"), ios::out);
     if (!f.is_open()) throw runtime_error("Cannot save simulation results.");
@@ -208,6 +189,23 @@ void writeResults(SharedLibraryModel<scalar> &m) {
             f << "\n";
         } f.close();
     }
+    for (int p = 0; p < PMax-1; p++) {
+        string n = string(PName[p]);
+        int dim = pow(side[p], 2) * depth[p];
+        ofstream f(RES_PATH+string("theta")+n);
+        if (!f.is_open()) throw runtime_error("Cannot save data.");
+        scalar *arr = m.getArray<scalar>("theta"+n);
+        for (int i=0; i < dim; i++) f << arr[i] << " ";
+        f.close();
+        f.open(RES_PATH+string("a")+n, ios::out);
+        if (!f.is_open()) throw runtime_error("Cannot save data.");
+        arr = m.getArray<scalar>("a"+n);
+        for (int i=0; i < dim; i++) f << arr[i] << " ";
+        f.close();
+
+    }
+
+
 }
 
 int main() {

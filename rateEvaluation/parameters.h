@@ -4,7 +4,7 @@
 // DEFINITIONS
 // Names
 enum Populations {V1L4E, V1L4I, V1L23E, V1L23I, V2L4E, V2L4I, V2L23E, V2L23I, LGN, PMax,}; // All excitatories are even
-enum Layers {V1L4, V1L23, V2L4, V2L23, LMax}; // Population/2, LGN is meaningless
+//enum Layers {V1L4, V1L23, V2L4, V2L23, LMax}; // Population/2, LGN is meaningless
 const char *PName[PMax] = {"V1L4E", "V1L4I", "V1L23E", "V1L23I", "V2L4E", "V2L4I", "V2L23E", "V2L23I", "LGN"};
 
 // ARCHITECTURAL PARAMETERS
@@ -16,9 +16,9 @@ const float expR[PMax] = {.1, .1, .1, .1, .1, .1, .1, .1, .1057};
 // SYNAPSE PARAMETERS
 enum STypes {FF, Lat, FB, STMax,};
 /// RF sizes: for meaningless values, 0 is used
-const int RF[STMax][LMax] = {{10, 7, 5, 4},  // FF
+/*const int RF[STMax][LMax] = {{10, 7, 5, 4},  // FF
                              {11, 9, 7, 5},  // Lat
-                             { 7, 8, 4, 0}}; // FB
+                             { 7, 8, 4, 0}}; // FB*/
 
 const int noSynapses = 28;
 const int Synapses[noSynapses][3] = { 
