@@ -7,3 +7,10 @@
 /rateModel/generator
 /rateModel/generator.d
 /rateModel/rateModel
+/rateEvaluation/rateEvaluation_CODE/
+/rateEvaluation/architecture/matrices/
+/rateEvaluation/Makefile
+/rateEvaluation/generator
+/rateEvaluation/generator.d
+/rateEvaluation/rateEvaluation
+main

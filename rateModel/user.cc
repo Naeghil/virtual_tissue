@@ -16,10 +16,29 @@
 
 using namespace std;
 
-#define NO_PATCHES 200000
+#define NO_ITERS 1
+#define NO_PATCHES 2000
+#define PRES_TIME 100
 #define SP_INTERVAL 100 * 5 // The base interval is 100 patches (10s) but the implementation uses 5*10 = 50s
 #define SP false
-#define RES_PATH "../RESULTS/training/"
+
+// This is the name of the condition used in the model
+#define CNO 1
+#if CNO == 1
+    #define CONDITION "popAvg"
+#elif CNO == 2
+    #define CONDITION "ogTrace"
+#elif CNO == 3
+    #define CONDITION "slowTrace"
+#elif CNO == 4
+    #define CONDITION "midTrace"
+#elif CNO == 5
+    #define CONDITION "fastTrace"
+#endif
+
+string synName(int s, string div = "-") {
+    return string(PName[Synapses[s][0]]) + div + string(PName[Synapses[s][1]]);
+}
 
 void initialiseConnectivity(SharedLibraryModel<scalar> &m) {
     for (int i = 0; i < noSynapses; i++) {
@@ -42,222 +61,142 @@ void initialiseConnectivity(SharedLibraryModel<scalar> &m) {
         m.pushVarToDevice(sName+"_"+tName, "active");
     } 
 }
-
-void presentPatch(SharedLibraryModel<scalar> &m, iMat patch) {
-    m.pullVarFromDevice("LGN", "input");
-    scalar *iRates = m.getArray<scalar>("inputLGN");
-    for (int y = 0; y < side[LGN]; y++) for (int x = 0; x < side[LGN]; x ++) for (int z = 0; z < 2; z ++) iRates[y*2*side[LGN] + 2*x + z] = patch[y][x][z];
-    m.pushVarToDevice("LGN","input");
-}
-
 // Global variables because yes
-unordered_map<string, vector<scalar>> rAvg;
-unordered_map<string, vector<vector<float>>> rBins;
-unordered_map<string, vector<vector<int>>> rDists;
-unordered_map<string, vector<scalar>> wAvg;
-unordered_map<string, vector<vector<float>>> wBins;
-unordered_map<string, vector<vector<int>>> wDists;
+unordered_map<string, ofstream> rates;
+unordered_map<string, ofstream> weights;
+unordered_map<string, ofstream> ratesW;
+unordered_map<string, ofstream> weightsW;
 
-
-// The save function is NOT for the purpose of restarting a simulation from a certain point
-// Rather to observe the results of the simulation
-vector<scalar> makeHist(scalar *arr, int dim, vector<int> &counts, bool *mask = nullptr, bool nonzero = false) {
-    scalar delta = .0;
-    for (int i = 0; i<dim; i++) if (arr[i] > delta) delta = arr[i];
-    delta /= 100.;
-    vector<scalar> bins(101, .0);
-    for (int i = 0; i<101; i++) bins[i] = delta*i;
-    for (int i=0; i<dim; i++) {
-        if (nonzero && !mask[i]) continue;
-        int idx = (delta == .0) ? 0 : int(arr[i] / delta);
-        counts[idx]++;
-    }
-    return bins;
-}
-
-void saveNetwork(SharedLibraryModel<scalar> &m) {
+void recordProgress(SharedLibraryModel<scalar> &m) {
     // Neurons
-    string n;
-    int dim;
-    scalar *arr;
     for (int p = 0; p < PMax; p++) {
-        scalar avg = 0;
-        vector<int> counts(100, 0); 
-        n = PName[p]; dim = side[p]*side[p]*depth[p]; 
+        int dim = side[p]*side[p]*depth[p]; 
+        m.pullVarFromDevice(PName[p], "r");
+        rates[PName[p]].write(reinterpret_cast<char*>(m.getArray<scalar>("r"+string(PName[p]))), sizeof(scalar)*dim);
 
-        // Full measure
-        ofstream f;
-        m.pullStateFromDevice(n);
-        f.open(RES_PATH+string("rates")+n, ios::ate);
-        if (!f.is_open()) throw runtime_error("Cannot save data.");
-        arr = m.getArray<scalar>("r"+n);
-        for (int i=0; i < dim; i++) f << arr[i] << " ";
-        f << "\n";
-        f.close();
-
-        m.pullVarFromDevice(n, "r");
-        arr = m.getArray<scalar>("r"+n);
-        // Histograms
-        rBins[n].push_back(makeHist(arr, dim, counts));
-        rDists[n].push_back(counts);
-        // Average
-        for (int i = 0; i < dim; i++) avg += arr[i];
-        rAvg[n].push_back(avg/dim);
-        
+        // For testing purposes
+        auto arr = m.getArray<scalar>("r"+string(PName[p]));
+        for (int i = 0; i < dim; i++) ratesW[PName[p]] << arr[i] << " ";
+        ratesW[PName[p]] << endl;
     }
     // Synapses
-    for (int syn = 0; syn < noSynapses; syn++) {
-        scalar avg = 0;
-        int count = 0;
-        vector<int> counts(100, 0);
-        int s = Synapses[syn][0]; int t = Synapses[syn][1];
-        string sN = string(PName[s])+"-"+string(PName[t]);
-        dim = side[s] * side[s] * depth[s] * side[t] * side[t] * depth[t];
-        m.pullVarFromDevice(string(PName[s]) + "_" + string(PName[t]), "w");
-        arr = m.getArray<scalar>("w"+string(PName[s]) + "_" + string(PName[t]));
-        bool *mask = m.getArray<bool>("active"+string(PName[s]) + "_" + string(PName[t]));
-        // Histograms
-        wBins[sN].push_back(makeHist(arr, dim, counts, mask, true));
-        wDists[sN].push_back(counts);
-        for (int i = 0; i < dim; i ++) if (mask[i]) {
-                avg += arr[i];
-                count++;
-        }
-        wAvg[sN].push_back(avg/count);
+    for (int s = 0; s < noSynapses; s++) {
+        int src = Synapses[s][0]; int trg = Synapses[s][1];
+        int dim = side[src] * side[src] * depth[src] * side[trg] * side[trg] * depth[trg];
+        m.pullVarFromDevice(synName(s, "_"), "w");
+        weights[synName(s)].write(reinterpret_cast<char*>(m.getArray<scalar>("w"+synName(s, "_"))), sizeof(scalar)*dim);
+
+        // For testing purposes
+        auto arr = m.getArray<scalar>("w"+synName(s, "_"));
+        for (int i = 0; i < dim; i++) weightsW[synName(s)] << arr[i] << " ";
+        weightsW[synName(s)] << endl;
     }
 }
 
-void writeResults(SharedLibraryModel<scalar> &m) {
-    // Rates
-    ofstream f(RES_PATH + string("avgRates.tsv"), ios::out);
-    if (!f.is_open()) throw runtime_error("Cannot save simulation results.");
-    for (int p = 0; p < PMax; p++) f << PName[p] << "\t"; 
-    f << "\n";
-    for (int i = 0; i < int(rAvg["LGN"].size()); i++) { 
-        for (int p = 0; p < PMax; p++) f << rAvg[PName[p]][i] << "\t"; 
-        f << "\n"; 
-    } f.close();
+void writeResults(SharedLibraryModel<scalar> &m, int it) {
+    ofstream f(string("../RESULTS/" CONDITION "/It")+to_string(it), ios::out | ios::binary);
+    ofstream fw(string("../RESULTS/" CONDITION "/WIt")+to_string(it), ios::out);
 
-    // Weights
-    f = ofstream(RES_PATH + string("avgWeights.tsv"), ios::out);
-    if (!f.is_open()) throw runtime_error("Cannot save simulation results.");
-    for (int s = 0; s < noSynapses; s++) f << string(PName[Synapses[s][0]])+"-"+string(PName[Synapses[s][1]]) << "\t"; 
-    f << "\n";
-    for (int i = 0; i < int(wAvg["LGN-V1L4E"].size()); i++) { 
-        for (int s = 0; s < noSynapses; s++) f << wAvg[string(PName[Synapses[s][0]])+"-"+string(PName[Synapses[s][1]])][i] << "\t"; 
-        f << "\n"; 
-    } f.close();
+    // Neuron populations
+    for (int p = 0; p < PMax-1; p++) {
+        int dim = side[p]*side[p]*depth[p];
+        m.pullStateFromDevice(PName[p]);
+        f.write(reinterpret_cast<char*>(m.getArray<scalar>("theta"+string(PName[p]))), sizeof(scalar)*dim);
+        f.write(reinterpret_cast<char*>(m.getArray<scalar>("a"+string(PName[p]))), sizeof(scalar)*dim);
 
-    // TODO: add mean and sd
-    // Distributions: they are just two vectors each 
-    for (int p = 0; p < PMax; p++) {
-        string pN = PName[p];
-        f = ofstream(RES_PATH + pN + string("dist.vec"), ios::out);
-        if (!f.is_open()) throw runtime_error("Cannot save simulation results.");
-        for (int i = 0; i < int(rDists[pN].size()); i++) {
-            for (int k = 0; k < 100; k++) f << rDists[pN][i][k] << " ";
-            f << "\n";
-            for (int k = 0; k < 101; k++) f << rBins[pN][i][k] << " ";
-            f << "\n";
-        }
-        f.close();
+        // For testing purposes
+        auto arr = m.getArray<scalar>("theta"+string(PName[p]));
+        for (int i = 0; i < dim; i++) fw << arr[i] << " ";
+        fw << endl;
+        arr = m.getArray<scalar>("a"+string(PName[p]));
+        for (int i = 0; i < dim; i++) fw << arr[i] << " ";
+        fw << endl;    
     }
-    for (int s = 0; s < noSynapses; s++) {
-        string sN = string(PName[Synapses[s][0]])+"-"+string(PName[Synapses[s][1]]);
-        f = ofstream(RES_PATH + sN + string("dist.vec"), ios::out);
-        if (!f.is_open()) throw runtime_error("Cannot save simulation results.");
-        for (int i = 0; i < int(wDists[sN].size()); i++) {
-            for (int k = 0; k < 100; k++) f << wDists[sN][i][k] << " ";
-            f << "\n";
-            for (int k = 0; k < 101; k++) f << wBins[sN][i][k] << " ";
-            f << "\n";
-        } f.close();
-    }
-
-    // Save matrix weights: this is both for analysis and for evaluation initialisation purposes
+    // Synapses
     for (int s = 0; s < noSynapses; s++) {
         int src = Synapses[s][0]; int trg = Synapses[s][1];
-        string sName = PName[src]; string tName = PName[trg];
-        int sDim = side[src] * side[src] * depth[src];
-        int tDim = side[trg] * side[trg] * depth[trg];
+        int dim = side[src] * side[src] * depth[src] * side[trg] * side[trg] * depth[trg];
+        m.pullStateFromDevice(synName(s, "_"));
+        f.write(reinterpret_cast<char*>(m.getArray<scalar>("w"+synName(s,"_"))), sizeof(scalar)*dim);
 
-        scalar *weights = m.getArray<scalar>("w"+sName+"_"+tName);
-        ofstream f(RES_PATH+sName+"-"+tName+"weights.vec");
-        if (!f.is_open()) throw runtime_error("Cannot save simulation results.");
-        for (int i = 0; i < sDim; i++) {
-            for (int k = 0; k < tDim; k++) f << weights[i*tDim + k] << " "; 
-            f << "\n";
-        } f.close();
+        // For testing purposes
+        auto arr = m.getArray<scalar>("w"+synName(s,"_"));
+        for (int i = 0; i < dim; i++) fw << arr[i] << " ";
+        fw << endl;
     }
-    for (int p = 0; p < PMax-1; p++) {
-        string n = string(PName[p]);
-        int dim = pow(side[p], 2) * depth[p];
-        ofstream f(RES_PATH+string("theta")+n);
-        if (!f.is_open()) throw runtime_error("Cannot save data.");
-        scalar *arr = m.getArray<scalar>("theta"+n);
-        for (int i=0; i < dim; i++) f << arr[i] << " ";
-        f.close();
-        f.open(RES_PATH+string("a")+n, ios::out);
-        if (!f.is_open()) throw runtime_error("Cannot save data.");
-        arr = m.getArray<scalar>("a"+n);
-        for (int i=0; i < dim; i++) f << arr[i] << " ";
-        f.close();
-
-    }
-
-
+    f.close();
+    fw.close();
 }
 
 int main() {
     srand(42); // Set seed
 
-    // Model setup
-    SharedLibraryModel<float> model("./", "rateModel");
-    cout << "Initialise model\n";
-    model.allocateMem();
-    model.initialize();
-    cout << "Initialise connectivity\n";
-    initialiseConnectivity(model);
-    
-    // Recorders setup 
-    for (int p = 0; p < PMax; p++) {
-        rAvg[PName[p]] = vector<scalar>(0);
-        rDists[PName[p]] = vector<vector<int>>(0);
-        rBins[PName[p]] = vector<vector<scalar>>(0);
-    }
-    for (int s = 0; s < noSynapses; s++) {
-        string n = string(PName[Synapses[s][0]]) + "-" + string(PName[Synapses[s][1]]);
-        wAvg[n] = vector<scalar>(0);
-        wDists[n] =  vector<vector<int>>(0);
-        wBins[n] =  vector<vector<scalar>>(0);
-    }
+    for(int it = 0; it < NO_ITERS; it++) {
+        cout << "Training iteration " << it+1 << "/" << NO_ITERS << endl;
+        // Model setup
+        SharedLibraryModel<float> model("./", "rateModel");
+        cout << "Initialising model" << endl;
+        model.allocateMem();
+        model.initialize();
+        cout << "Initialising connectivity" << endl;
+        initialiseConnectivity(model);
 
-    // Training setup
-    Scene image("IMAGES_NORM2015");  // Training scene
-    auto start = chrono::high_resolution_clock::now();
-    auto lastPatchgroup = start;
+        // Recorders setup 
+        for (int p = 0; p < PMax; p++) rates[PName[p]].open(string("../RESULTS/" CONDITION "/It")+to_string(it)+string("_")+string(PName[p]), ios::out|ios::binary);
+        for (int s = 0; s < noSynapses; s++) weights[synName(s)].open(string("../RESULTS/" CONDITION "/It")+to_string(it)+string("_")+synName(s), ios::out|ios::binary);
+        for (int p = 0; p < PMax; p++) ratesW[PName[p]].open(string("../RESULTS/" CONDITION "/WIt")+to_string(it)+string("_")+string(PName[p]), ios::out);
+        for (int s = 0; s < noSynapses; s++) weightsW[synName(s)].open(string("../RESULTS/" CONDITION "/WIt")+to_string(it)+string("_")+synName(s), ios::out);
 
-    // Training protocol
-    for (int p = 0; p < NO_PATCHES; p++) {
-        // Record midway
-        if (p%1000 == 0) {
-            cout << "Patch no " << p << "/" << NO_PATCHES <<endl;
-            auto newTime = chrono::high_resolution_clock::now();
-            double diff = chrono::duration_cast<chrono::microseconds>(newTime - lastPatchgroup).count()/1000.;
-            cout << "  " << diff/1000. << "ms per patch at " << diff/100000 << " acceleration" << endl;
-            lastPatchgroup = newTime;
-            saveNetwork(model);
-            newTime = chrono::high_resolution_clock::now();
-            cout << "  Network saved. IO time: " << chrono::duration_cast<chrono::microseconds>(newTime - lastPatchgroup).count()/1000. << "ms" << endl;
-            sleep(10); // Don't want your computer to overheat
-            lastPatchgroup = chrono::high_resolution_clock::now();
+        // Training setup
+        scalar *inRates = model.getArray<scalar>("inputLGN");
+        Scene image("IMAGES_NORM2015");  // Training scene
+        auto lastPatchgroup = chrono::high_resolution_clock::now();
+        double compTime = 0;
+        double ioTime = 0;
+
+        // Training protocol
+        for (int p = 0; p < NO_PATCHES; p++) {
+            // Recording 
+            if (p%1000 == 0) {
+                cout << "Patch no " << p << "/" << NO_PATCHES <<endl;
+                auto newTime = chrono::high_resolution_clock::now();
+                compTime += chrono::duration_cast<chrono::microseconds>(newTime - lastPatchgroup).count()/1000.;
+                lastPatchgroup = newTime;
+                recordProgress(model);
+                newTime = chrono::high_resolution_clock::now();
+                ioTime += chrono::duration_cast<chrono::microseconds>(newTime - lastPatchgroup).count()/1000.;
+                cout << "  Network saved." << endl;
+                //sleep(10); // Don't want your computer to overheat
+                lastPatchgroup = chrono::high_resolution_clock::now();
+            }
+            // Present Patch
+            iMat patch = image.saccade();
+            for (int y = 0; y < side[LGN]; y++) for (int x = 0; x < side[LGN]; x ++) for (int z = 0; z < 2; z ++) inRates[y*2*side[LGN] + 2*x + z] = patch[y][x][z];
+            model.pushVarToDevice("LGN","input");
+            // Simulate
+            for (int _ = 0; _ < 100; _++) model.stepTime();   
         }
-        presentPatch(model, image.saccade());  // Adjust LGN rates for input
-        for (int _ = 0; _ < 100; _++) model.stepTime();  // Simulate
+
+        // Output and Summary
+        recordProgress(model);
+        writeResults(model, it);
+        cout << "Computation Time: " << compTime << "ms" << endl;
+        cout << "Speed Factor: " << compTime / (NO_PATCHES*100.) << endl;
+        cout << "IO Time: " << ioTime << "ms" << endl;
+
+        // Recording reset
+        for (int p = 0; p < PMax; p++) rates[PName[p]].close();
+        for (int s = 0; s < noSynapses; s++) weights[synName(s)].close();
+        for (int p = 0; p < PMax; p++) ratesW[PName[p]].close();
+        for (int s = 0; s < noSynapses; s++) weightsW[synName(s)].close();
     }
-    saveNetwork(model);
-    // All weights should be already pulled
-    writeResults(model);
+
+
+
+
+    
+
+
 
 
     return 0;

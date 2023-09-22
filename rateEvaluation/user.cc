@@ -15,18 +15,23 @@
 
 using namespace std;
 
-#define RES_PATH "../RESULTS/"
+
+#define var "trace"
+// #define var "average"
+
+#define RES_PATH "../RESULTS/variations/"var"/"
 
 void initialiseConnectivity(SharedLibraryModel<scalar> &m) {
     for (int i = 0; i < noSynapses; i++) {
         // Definitions
         const int *syn = Synapses[i];
+        if (syn[2] == FB) continue;
         string sName = PName[syn[0]];
         string tName = PName[syn[1]];
         // Matrices
         fstream mat("../rateModel/architecture/matrices/"+sName+"-"+tName, ios_base::in);
         if (!mat.is_open()) throw runtime_error("  Matrix file could not be opened.");
-        fstream weights("../RESULTS/training/"+sName+"-"+tName+"weights.vec", ios_base::in);
+        fstream weights(RES_PATH"training/"+sName+"-"+tName+"weights.vec", ios_base::in);
         if (!mat.is_open()) throw runtime_error("  Weights file could not be opened.");
         m.pullVarFromDevice(sName+"_"+tName, "active");
         m.pullVarFromDevice(sName+"_"+tName, "w");
@@ -46,9 +51,9 @@ void initialiseConnectivity(SharedLibraryModel<scalar> &m) {
 
 void initialiseNeurons(SharedLibraryModel<scalar> &m) {
     for (int p = 0; p < PMax-1; p++) {
-        fstream theta("../RESULTS/training/theta"+string(PName[p]));
+        fstream theta(RES_PATH"training/theta"+string(PName[p]));
         if (!theta.is_open()) throw runtime_error("Theta file could not be opened.");
-        fstream a("../RESULTS/training/a"+string(PName[p]));
+        fstream a(RES_PATH"training/a"+string(PName[p]));
         if (!a.is_open()) throw runtime_error("A file could not be opened.");
         m.pullVarFromDevice(PName[p], "theta");
         m.pullVarFromDevice(PName[p], "a");
@@ -188,11 +193,11 @@ void writeResults(string path) {
             f << "\n";
         } f.close();
         // t42
-        /*ofstream f(RES_PATH+path+string("42")+string(PName[p]));
+        f = ofstream(RES_PATH+path+string("42")+string(PName[p]));
         for (int t = 0; t < int(rates42[PName[p]].size()); t++) {
             for (int k=0; k<dim; k++) f << rates42[PName[p]][t][k] << " ";
             f << "\n";
-        } f.close(); */
+        } f.close();
         // t100
         f = ofstream(RES_PATH+path+string("100")+string(PName[p]));
         for (int t = 0; t < int(rates100[PName[p]].size()); t++) {
@@ -226,49 +231,53 @@ int main() {
     cout << "Initialise network\n";
     initialiseConnectivity(model);
     initialiseNeurons(model);
-    
-    for(int d=0; d < tileCut; d++) {
+    // 
+    for(int d=tileCut; d < tileCut; d++) {
         cout << "Evaluating dataset " << sets[d] << endl;
         // Setup
         for (int p = 0; p < PMax-1; p++) {
             rates30[PName[p]] = vector<vector<scalar>>(); 
-            //rates42[PName[p]] = vector<vector<scalar>>();
+            rates42[PName[p]] = vector<vector<scalar>>();
             rates100[PName[p]] = vector<vector<scalar>>();
         }
-        Scene scene(sets[d], noImages[d], false);
+//        Scene scene(sets[d], noImages[d], false);
+        Scene scene(sets[d], 100, false);
         int img = 0;
         while ((img = scene.next()) != -1) { // All images
             if (img%100 == 0) cout << "  image " << img << "/" << noImages[d] << endl; 
             auto in = scene.patch();
             presentPatch(model, in);
-            for (int _ = 0; _ < 30; _++) model.stepTime();
-            record(model, rates30);
-            for (int _ = 0; _ < 12; _++) model.stepTime();
+            //for (int _ = 0; _ < 30; _++) model.stepTime();
+            //record(model, rates30);
+            //for (int _ = 0; _ < 12; _++) model.stepTime();
             //recordDelays(model, rates42);
-            for (int _ = 0; _ < 58/*49*/; _++) model.stepTime();
+            //for (int _ = 0; _ < 49; _++) model.stepTime();
+            for (int _ = 0; _ < 100; _++) model.stepTime();
             record(model, rates100);
         }
         writeResults("eval/"+sets[d]);
     }
-    for(int d=tileCut; d<noSets; d++) {
+    //
+    for(int d=tileCut+1; d<noSets; d++) {
         Scene scene(sets[d], noImages[d], true);
+//        Scene scene(sets[d], 100, true);
         cout << "Evaluating dataset " << sets[d] << endl;
         int img = 0;
         while ((img = scene.next()) != -1) {
             if (img%100 == 0) cout << "  image " << img << "/" << noImages[d] << endl;
             for (int p = 0; p < PMax-1; p++) {
                 rates30[PName[p]] = vector<vector<scalar>>(); 
-                //rates42[PName[p]] = vector<vector<scalar>>();
+                rates42[PName[p]] = vector<vector<scalar>>();
                 rates100[PName[p]] = vector<vector<scalar>>();
-            }4
+            }
             while(scene.nextTile()) {
                 auto in = scene.patch();
                 presentPatch(model, in);
                 for (int _ = 0; _ < 30; _++) model.stepTime();
                 record(model, rates30);
                 for (int _ = 0; _ < 12; _++) model.stepTime();
-                //recordDelays(model, rates42);
-                for (int _ = 0; _ < 58/*49*/; _++) model.stepTime();
+                recordDelays(model, rates42);
+                for (int _ = 0; _ < 49; _++) model.stepTime();
                 record(model, rates100);
             }
             writeResults("eval/"+sets[d]+"/"+to_string(img));

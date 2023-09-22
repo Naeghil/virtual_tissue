@@ -18,8 +18,6 @@
 // TauLearn only depends on Ca, so it's computed as a property of the neuron
 
 // NOTE: DT has been removed from the euqations as the simulation is meant to be run at DT=1ms
-// NOTE: the learning rule in this model uses the squared Calcium levels as per specs; teichmann's implementation uses the squared rate; compare and constrast (?)
-
 
 // For feedforward and lateral excitation
 class ExcitatoryFF : public WeightUpdateModels::Base {
@@ -30,7 +28,7 @@ public:
         "if ($(active)) {\n"
         "   $(addToInSynDelay, $(w)*$(r_pre), $(delay) );\n"
         "   scalar tauLearn = 5000. + 30000. * exp(-15. * $(Ca_post));\n"
-        // THETA: avgR is used; alternatives: population average of pre (complex), constant (.6)
+        // THETA: avgR is used; alternatives: population average of pre (complex), constant (.06)
         "   $(w) += ( ($(r_pre) - $(avgR_pre)) * $(Ca_post) - $(alphaFF) * $(Ca_post) * $(Ca_post)* $(w) ) / tauLearn;\n"  // Implementation has r^2 not Ca
         "   $(w) = max(0., $(w));\n"
         "};\n"
@@ -59,7 +57,7 @@ public:
     SET_SYNAPSE_DYNAMICS_CODE(
         "if ($(active)) {\n"
         "   $(addToInSynDelay, $(w)*$(r_pre), $(delay));\n"
-        // THETA: avgR is used; alternatives: population average of pre (complex), constant (.6)
+        // THETA: avgR is used; alternatives: population average of pre (complex), constant (.06)
         "   scalar tauLearn = 5000. + 30000. * exp(-15. * $(Ca_post));\n"
         "   $(w) += ( ( $(r_pre) - $(avgR_pre) ) * $(Ca_post) - $(alphaFB) * $(Ca_post) * $(Ca_post)* $(w) ) / tauLearn;\n"  // Implementation has r^2 not Ca
         "   $(w) = max(0., $(w));\n"
@@ -71,7 +69,6 @@ public:
         "$(HFB) += ( .5 * max( 0.,  $(r_post) - .6 ) * excFB + .1 * excFB - .005 - $(HFB) ) / 100.;\n"
         "$(HFB) = max( 0., min( 3., $(HFB) ) );\n"
         // +.01 unclear; used in original implementation
-        // The helper function contribution is implemented differently but mathematically equivalent
         // "$(alphaFB) += ($(alphaFB) + .01) * ( $(HFB) - "EPSILON_ALPHA" * ( 1 - "DELTA" * $(theta_post) ) ) * DT / "TAU_ALPHA";\n"
         "$(alphaFB) += ($(alphaFB) + .01) * ( $(HFB) - .015 + .15 * $(theta_post) ) / 50000.;\n"
         "$(alphaFB) = max(0., $(alphaFB));\n"
@@ -92,7 +89,7 @@ public:
         "if ($(active)) {\n"
         "   $(addToInSynDelay, $(w)*$(r_pre), $(delay));\n"
 //        "   $(w) += ( $(r_pre) * $(r_post) - $(r_pre) * .06 * (1+$(w)) ) / 5000;\n"
-        "   $(w) += ( $(r_pre) * $(r_post) - $(r_pre) * max($(rAvg_post) - $(theta_post),.0) * (1+$(w)) ) / 5000;\n"
+        "   $(w) += ( $(r_pre) * $(r_post) - $(r_pre) * max($(avgR_post) - $(theta_post),.0) * (1+$(w)) ) / 5000;\n"
         "   $(w) = max(0., $(w));\n"
         "};\n"
     );
@@ -120,7 +117,6 @@ class inhPS : public PostsynapticModels::Base {
 };
 IMPLEMENT_MODEL(inhPS);
 
-/*
 // "Fake" synapses to accumulate averages
 class dirAvg : public WeightUpdateModels::Base {
 public:
@@ -147,4 +143,3 @@ class sqravgPS : public PostsynapticModels::Base {
     SET_APPLY_INPUT_CODE("$(sqPopAvg) += $(inSyn); $(inSyn) = 0;");
 };
 IMPLEMENT_MODEL(sqravgPS);
-*/

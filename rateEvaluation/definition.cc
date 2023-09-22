@@ -53,10 +53,11 @@ void modelDefinition(ModelSpec &model)
     addSyn(model, V2L23I, V2L23E, 1, Lat);
     addSyn(model, V2L23I, V2L23I, 1, Lat);
     // --Feedback pathway--
+//*  Literally comment out this comment opening to activate feedback    
     addSyn(model, V2L23E, V1L23E, 3, FB);
     addSyn(model, V2L23E, V1L23I, 2, FB);
     addSyn(model, V1L23E, V1L4I, 1, FB);
-    addSyn(model, V2L23E, V2L4I, 1, FB);  
+    addSyn(model, V2L23E, V2L4I, 1, FB); //*/
     // --Feedforward inhibition--
     addSyn(model, V1L4I, V1L23E, 1, FF);
     addSyn(model, V1L4I, V1L23I, 1, FF);

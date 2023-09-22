@@ -50,9 +50,9 @@ void modelDefinition(ModelSpec &model)
         if (p == V1L23E || p == V2L23E) tauCa = 500.;
         if (p%2 == 1) model.addNeuronPopulation<rateNeuronI>(PName[p], noNeurons, rateNeuronI::ParamValues(tauCa, noNeurons), iniI);
         else model.addNeuronPopulation<rateNeuronE>(PName[p], noNeurons, rateNeuronE::ParamValues(tauCa, noNeurons), iniE);
-        
-//        model.addSynapsePopulation<dirAvg, diravgPS>(std::string(PName[p])+"avg", SynapseMatrixType::DENSE_INDIVIDUALG, 0, PName[p], PName[p], {}, {}, {}, {});
-//        model.addSynapsePopulation<sqrAvg, sqravgPS>(std::string(PName[p])+"sqavg", SynapseMatrixType::DENSE_INDIVIDUALG, 0, PName[p], PName[p], {}, {}, {}, {});
+        // Fake synapses for population averages    
+        model.addSynapsePopulation<dirAvg, diravgPS>(std::string(PName[p])+"avg", SynapseMatrixType::DENSE_INDIVIDUALG, 0, PName[p], PName[p], {}, {}, {}, {});
+        model.addSynapsePopulation<sqrAvg, sqravgPS>(std::string(PName[p])+"sqavg", SynapseMatrixType::DENSE_INDIVIDUALG, 0, PName[p], PName[p], {}, {}, {}, {});
     }
     // SYNAPSES
     // --Feedforward pathway--
@@ -77,11 +77,11 @@ void modelDefinition(ModelSpec &model)
     addSyn(model, V2L23E, V2L23I, 1, Lat, .5, 1.);
     addSyn(model, V2L23I, V2L23E, 1, Lat, .5);
     addSyn(model, V2L23I, V2L23I, 1, Lat, .5);
-    // --Feedback pathway--
+    // --Feedback pathway--: comment this out to shut off inhibition
     addSyn(model, V2L23E, V1L23E, 3, FB, .5, .6);
     addSyn(model, V2L23E, V1L23I, 2, FB, .5, .6);
     addSyn(model, V1L23E, V1L4I, 1, FB, .334, .6);
-    addSyn(model, V2L23E, V2L4I, 1, FB, .334, .6);  
+    addSyn(model, V2L23E, V2L4I, 1, FB, .334, .6);
     // --Feedforward inhibition--
     addSyn(model, V1L4I, V1L23E, 1, FF, .5);
     addSyn(model, V1L4I, V1L23I, 1, FF, .5);

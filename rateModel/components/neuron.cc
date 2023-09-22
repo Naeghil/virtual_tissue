@@ -19,7 +19,6 @@ public:
     SET_SIM_CODE(
         "$(r) += ($(input) - $(r)) / 10.;\n"
         "$(avgR) += ( $(r) - $(avgR) ) * DT / 50000.;\n"
-    
     ); // Exponential moving average
     SET_VARS({{"r", "scalar"}, {"avgR", "scalar"}, {"input", "scalar"}});
 };
@@ -32,32 +31,30 @@ IMPLEMENT_MODEL(rateInput);
 // #define EPSILON ".01" // Drift strength
 
 
-// NOTE: DT has been removed from the euqations as the simulation is meant to be run at DT=1ms
+// NOTE: DT has been removed from the equations as the simulation is meant to be run at DT=1ms
 
 class rateNeuronE : public NeuronModels::Base {
 public:
     DECLARE_MODEL(rateNeuronE, 2, 6);
 
-    SET_ADDITIONAL_INPUT_VARS({ {"excFF","scalar","0"}, {"excFB", "scalar","0"}, {"inh", "scalar","0"}, 
-                                {"popAvg", "scalar", "0"}, {"sqPopAvg", "scalar", "0"}});  // These are always 1 step behind
+    SET_ADDITIONAL_INPUT_VARS({ {"excFF","scalar","0"}, {"excFB", "scalar","0"}, {"inh", "scalar","0"}
+                                , {"popAvg", "scalar", "0"}, {"sqPopAvg", "scalar", "0"} // These are always 1 step behind
+                                }); 
     SET_SIM_CODE(
         "$(m) += ( $(a) * ( $(excFF) + $(excFB) - $(inh) - $(theta) ) - $(m) ) / 10.;\n"
         "$(r) = min(3., max(.0, $(m)));\n"  // saturation step for Exc neurons; not in spec
 
         "$(Ca) += ( $(r) - $(Ca) ) / $(tauCa);\n"
 
-        //"scalar drift = ($(theta) > 0) ? .01 : -.01;\n"
-        // "$(theta) +=  ( ( $(r) - $(thetaTarget ) - "EPSILON" * sign) * dt / "TAU_IP" ;\n"
-        //"$(theta) +=  ( $(r) - ($(popAvg)/$(noNeurons)) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // TODO: change    
-        "$(theta) +=  ( $(r) - $(avgR) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Better result    
+        "$(theta) +=  ( $(r) - ($(popAvg)/$(noNeurons)) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Population Averages    
+        //"$(theta) +=  ( $(r) - $(avgR) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Locality
+        //"$(theta) +=  ( $(r) - .06 - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Constant Target    
+        
+        "$(a) += ( ($(sqPopAvg)/$(noNeurons)) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Population Averages
+        //"$(a) += ( $(avgR)*$(avgR) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Locality
+        //"$(a) += ( .0036 - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Constant Target
 
-        //"drift = ($(a) > 1) ? .01 : -.01;\n"
-        // "$(a) += ( ( $(aTarget) - $(r) * $(r) ) - "EPSILON" * sign) * dt / "TAU_IP";\n"
-        //"$(a) += ( ($(sqPopAvg)/$(noNeurons)) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // TODO: change
-        "$(a) += ( $(avgR)*$(avgR) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Better result
-
-        // "$(avgR) += ($(r) - $(avgR))*dt/"TAU_AVG";\n" // Exponential moving average
-        "$(avgR) += ( $(r) - $(avgR) ) / 50000.;\n"
+        "$(avgR) += ( $(r) - $(avgR) ) / 50000.;\n" // Exponential moving average
     );
 
     SET_PARAM_NAMES({"tauCa", "noNeurons"});
@@ -69,31 +66,29 @@ public:
 IMPLEMENT_MODEL(rateNeuronE);
 
 
-// Inhibitory neurons are not bound
+// Inhibitory neurons are not saturated
 class rateNeuronI : public NeuronModels::Base {
 public:
     DECLARE_MODEL(rateNeuronI, 2, 6);
 
-    SET_ADDITIONAL_INPUT_VARS({ {"excFF","scalar","0"}, {"excFB", "scalar","0"}, {"inh", "scalar","0"}, 
-                                {"popAvg", "scalar", "0"}, {"sqPopAvg", "scalar", "0"}});  // These are always 1 step behind
+    SET_ADDITIONAL_INPUT_VARS({ {"excFF","scalar","0"}, {"excFB", "scalar","0"}, {"inh", "scalar","0"}
+                                , {"popAvg", "scalar", "0"}, {"sqPopAvg", "scalar", "0"}  // These are always 1 step behind
+                                });
     SET_SIM_CODE(
         "$(m) += ( $(a) * ( $(excFF) + $(excFB) - $(inh) - $(theta) ) - $(m) ) / 10.;\n"
         "$(r) = max(.0, $(m));\n"
 
         "$(Ca) += ( $(r) - $(Ca) ) / $(tauCa);\n"
     
-        //"scalar drift = ($(theta) > 0) ? .01 : -.01;\n"
-        // "$(theta) +=  ( ( $(r) - $(thetaTarget ) - "EPSILON" * sign) * dt / "TAU_IP" ;\n"
-        //"$(theta) +=  ( $(r) - ($(popAvg)/$(noNeurons)) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // TODO: change    
-        "$(theta) +=  ( $(r) - $(avgR) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Better result    
+        "$(theta) +=  ( $(r) - ($(popAvg)/$(noNeurons)) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Population Averages    
+        //"$(theta) +=  ( $(r) - $(avgR) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Locality    
+        //"$(theta) +=  ( $(r) - .06 - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Constant Target    
 
-        //"drift = ($(a) > 1) ? .01 : -.01;\n"
-        // "$(a) += ( ( $(aTarget) - $(r) * $(r) ) - "EPSILON" * sign) * dt / "TAU_IP";\n"
-        //"$(a) += ( ($(sqPopAvg)/$(noNeurons)) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // TODO: change
-        "$(a) += ( $(avgR)*$(avgR) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Better result
+        "$(a) += ( ($(sqPopAvg)/$(noNeurons)) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Population Averages
+        //"$(a) += ( $(avgR)*$(avgR) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Locality
+        //"$(a) += ( .0036 - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Constant Target
 
-        // "$(avgR) += ($(r) - $(avgR))*dt/"TAU_AVG";\n" // Exponential moving average
-        "$(avgR) += ( $(r) - $(avgR) ) / 50000.;\n"
+        "$(avgR) += ( $(r) - $(avgR) ) / 50000.;\n"  // Exponential moving average
     );
 
     SET_PARAM_NAMES({"tauCa", "noNeurons"});
