@@ -5,6 +5,8 @@
 #include "components/synapse.cc"
 #include "parameters.h"    
 
+#define FEEDBACK 1  // Define as any other number to turn off feedback pathways
+
 void addSyn(ModelSpec &m, Populations s, Populations t, int d, STypes type) {
     SynapseGroup *syn;
     synapse::VarValues s_ini(.0, .0, d);
@@ -53,11 +55,12 @@ void modelDefinition(ModelSpec &model)
     addSyn(model, V2L23I, V2L23E, 1, Lat);
     addSyn(model, V2L23I, V2L23I, 1, Lat);
     // --Feedback pathway--
-//*  Literally comment out this comment opening to activate feedback    
+#if FEEDBACK == 1
     addSyn(model, V2L23E, V1L23E, 3, FB);
     addSyn(model, V2L23E, V1L23I, 2, FB);
     addSyn(model, V1L23E, V1L4I, 1, FB);
-    addSyn(model, V2L23E, V2L4I, 1, FB); //*/
+    addSyn(model, V2L23E, V2L4I, 1, FB);
+#endif
     // --Feedforward inhibition--
     addSyn(model, V1L4I, V1L23E, 1, FF);
     addSyn(model, V1L4I, V1L23I, 1, FF);

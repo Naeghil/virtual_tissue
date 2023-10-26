@@ -10,15 +10,16 @@
 // alpha_j = alpha_j+
 // H_j = H_j+
 
-#include "neuronModels.h"
+// NOTE: DT has been removed from the equations as the simulation is meant to be run at DT=1ms
 
+#include "neuronModels.h"
 
 class rateInput : public NeuronModels::Base {
 public:
     DECLARE_MODEL(rateInput, 0, 3);
     SET_SIM_CODE(
         "$(r) += ($(input) - $(r)) / 10.;\n"
-        "$(avgR) += ( $(r) - $(avgR) ) * DT / 50000.;\n"
+        "$(avgR) += ( $(r) - $(avgR) ) / 50000.;\n"
     ); // Exponential moving average
     SET_VARS({{"r", "scalar"}, {"avgR", "scalar"}, {"input", "scalar"}});
 };
@@ -31,14 +32,14 @@ IMPLEMENT_MODEL(rateInput);
 // #define EPSILON ".01" // Drift strength
 
 
-// NOTE: DT has been removed from the equations as the simulation is meant to be run at DT=1ms
 
 class rateNeuronE : public NeuronModels::Base {
 public:
-    DECLARE_MODEL(rateNeuronE, 2, 6);
+    //DECLARE_MODEL(rateNeuronE, 2, 6);
+    DECLARE_MODEL(rateNeuronE, 2, 7);
 
     SET_ADDITIONAL_INPUT_VARS({ {"excFF","scalar","0"}, {"excFB", "scalar","0"}, {"inh", "scalar","0"}
-                                , {"popAvg", "scalar", "0"}, {"sqPopAvg", "scalar", "0"} // These are always 1 step behind
+                                //, {"popAvg", "scalar", "0"}, {"sqPopAvg", "scalar", "0"} // These are always 1 step behind and are only for popAvg condition
                                 }); 
     SET_SIM_CODE(
         "$(m) += ( $(a) * ( $(excFF) + $(excFB) - $(inh) - $(theta) ) - $(m) ) / 10.;\n"
@@ -46,21 +47,26 @@ public:
 
         "$(Ca) += ( $(r) - $(Ca) ) / $(tauCa);\n"
 
-        "$(theta) +=  ( $(r) - ($(popAvg)/$(noNeurons)) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Population Averages    
-        //"$(theta) +=  ( $(r) - $(avgR) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Locality
+        //"$(theta) +=  ( $(r) - ($(popAvg)/$(noNeurons)) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Population Averages    
+        "$(theta) +=  ( $(r) - $(ipTheta) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Locality
         //"$(theta) +=  ( $(r) - .06 - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Constant Target    
         
-        "$(a) += ( ($(sqPopAvg)/$(noNeurons)) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Population Averages
-        //"$(a) += ( $(avgR)*$(avgR) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Locality
+        //"$(a) += ( ($(sqPopAvg)/$(noNeurons)) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Population Averages
+        "$(a) += ( $(ipTheta)*$(ipTheta) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Locality
         //"$(a) += ( .0036 - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Constant Target
 
         "$(avgR) += ( $(r) - $(avgR) ) / 50000.;\n" // Exponential moving average
+        //"$(ipTheta) += ( $(r) - $(ipTheta) ) / 50000.;\n" // EMA for IP -  ogTrace
+        //"$(ipTheta) += ( $(r) - $(ipTheta) ) / 5000.;\n" // EMA for IP - slowTrace
+        //"$(ipTheta) += ( $(r) - $(ipTheta) ) / 1000.;\n" // EMA for IP - midTrace
+        "$(ipTheta) += ( $(r) - $(ipTheta) ) / 200.;\n" // EMA for IP - fastTrace
     );
 
     SET_PARAM_NAMES({"tauCa", "noNeurons"});
     SET_VARS({
         {"m", "scalar"}, {"r", "scalar"}, {"theta", "scalar"}, {"a", "scalar"},
-        {"Ca", "scalar"} /*For E synapses*/, {"avgR", "scalar"} /* Used as THETA */
+        {"Ca", "scalar"} /*For E synapses*/, {"avgR", "scalar"}
+        , {"ipTheta", "scalar"} // For trace-based, comment out for others
     });
 };
 IMPLEMENT_MODEL(rateNeuronE);
@@ -69,10 +75,11 @@ IMPLEMENT_MODEL(rateNeuronE);
 // Inhibitory neurons are not saturated
 class rateNeuronI : public NeuronModels::Base {
 public:
-    DECLARE_MODEL(rateNeuronI, 2, 6);
+    //DECLARE_MODEL(rateNeuronE, 2, 6);
+    DECLARE_MODEL(rateNeuronI, 2, 7);
 
     SET_ADDITIONAL_INPUT_VARS({ {"excFF","scalar","0"}, {"excFB", "scalar","0"}, {"inh", "scalar","0"}
-                                , {"popAvg", "scalar", "0"}, {"sqPopAvg", "scalar", "0"}  // These are always 1 step behind
+                                //, {"popAvg", "scalar", "0"}, {"sqPopAvg", "scalar", "0"} // These are always 1 step behind
                                 });
     SET_SIM_CODE(
         "$(m) += ( $(a) * ( $(excFF) + $(excFB) - $(inh) - $(theta) ) - $(m) ) / 10.;\n"
@@ -80,21 +87,26 @@ public:
 
         "$(Ca) += ( $(r) - $(Ca) ) / $(tauCa);\n"
     
-        "$(theta) +=  ( $(r) - ($(popAvg)/$(noNeurons)) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Population Averages    
-        //"$(theta) +=  ( $(r) - $(avgR) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Locality    
+        //"$(theta) +=  ( $(r) - ($(popAvg)/$(noNeurons)) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Population Averages    
+        "$(theta) +=  ( $(r) - $(ipTheta) - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Locality    
         //"$(theta) +=  ( $(r) - .06 - (($(theta) > 0) ? .01 : -.01) ) / 10000.;\n"  // Constant Target    
 
-        "$(a) += ( ($(sqPopAvg)/$(noNeurons)) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Population Averages
-        //"$(a) += ( $(avgR)*$(avgR) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Locality
+        //"$(a) += ( ($(sqPopAvg)/$(noNeurons)) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Population Averages
+        "$(a) += ( $(ipTheta)*$(ipTheta) - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Locality
         //"$(a) += ( .0036 - $(r)*$(r) - (($(a) > 1) ? .01 : -.01) ) / 10000.;\n"  // Constant Target
 
         "$(avgR) += ( $(r) - $(avgR) ) / 50000.;\n"  // Exponential moving average
+        //"$(ipTheta) += ( $(r) - $(ipTheta) ) / 50000.;\n" // EMA for IP -  ogTrace
+        //"$(ipTheta) += ( $(r) - $(ipTheta) ) / 5000.;\n" // EMA for IP - slowTrace
+        //"$(ipTheta) += ( $(r) - $(ipTheta) ) / 1000.;\n" // EMA for IP - midTrace
+        "$(ipTheta) += ( $(r) - $(ipTheta) ) / 200.;\n" // EMA for IP - fastTrace
     );
 
     SET_PARAM_NAMES({"tauCa", "noNeurons"});
     SET_VARS({
         {"m", "scalar"}, {"r", "scalar"}, {"theta", "scalar"}, {"a", "scalar"},
-        {"Ca", "scalar"} /*For E synapses*/, {"avgR", "scalar"} /* Used as THETA */
+        {"Ca", "scalar"} /*For E synapses*/, {"avgR", "scalar"}
+        , {"ipTheta", "scalar"} // For trace-based, comment out for others
     });
 };
 IMPLEMENT_MODEL(rateNeuronI);

@@ -5,6 +5,22 @@
 #include "components/synapse.cc"
 #include "parameters.h"    
 
+// This is the name of the condition used in the model
+#define CNO 5
+#if CNO == 1
+    #define CONDITION "popAvg"
+#elif CNO == 2
+    #define CONDITION "ogTrace"
+#elif CNO == 3
+    #define CONDITION "slowTrace"
+#elif CNO == 4
+    #define CONDITION "midTrace"
+#elif CNO == 5
+    #define CONDITION "fastTrace"
+#elif CNO == 6
+    #define CONDITION "constant"
+#endif
+
 void addSyn(ModelSpec &m, Populations s, Populations t, int d, STypes type, double ewSeed, double alphadisc = .0, double gammac = 1.3) {
     auto tLayer = Layers(t/2);
     SynapseGroup *syn;
@@ -41,9 +57,14 @@ void modelDefinition(ModelSpec &model)
     model.setName("rateModel");
     // NEURONS
     // Watch out for initial averages
-    model.addNeuronPopulation<rateInput>("LGN", side[LGN]*side[LGN]*depth[LGN], {}, rateInput::VarValues(.0, .09, .0));
-    rateNeuronE::VarValues iniE(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1., /*Ca*/.06, /*avgR*/.06);
-    rateNeuronI::VarValues iniI(/*m*/.0, /*r*/.0, /*theta*/.0, /*a*/1., /*Ca*/.06, /*avgR*/.06);
+    model.addNeuronPopulation<rateInput>("LGN", side[LGN]*side[LGN]*depth[LGN], {}, rateInput::VarValues(.0, .08, .0));
+    #if CNO == 1
+        rateNeuronE::VarValues iniE(/*m*/.0, /*r*/.06, /*theta*/.0, /*a*/1., /*Ca*/.06, /*avgR*/.06);
+        rateNeuronI::VarValues iniI(/*m*/.0, /*r*/.06, /*theta*/.0, /*a*/1., /*Ca*/.06, /*avgR*/.06);
+    #else
+        rateNeuronE::VarValues iniE(/*m*/.0, /*r*/.06, /*theta*/.0, /*a*/1., /*Ca*/.06, /*avgR*/.06, /*ipTheta*/.06);
+        rateNeuronI::VarValues iniI(/*m*/.0, /*r*/.06, /*theta*/.0, /*a*/1., /*Ca*/.06, /*avgR*/.06, /*ipTheta*/.06);
+    #endif
     for (int p = 0; p < PMax-1; p++) {  // tauCa changes by layer
         int noNeurons = side[p]*side[p]*depth[p];
         double tauCa = 10.;
@@ -51,8 +72,10 @@ void modelDefinition(ModelSpec &model)
         if (p%2 == 1) model.addNeuronPopulation<rateNeuronI>(PName[p], noNeurons, rateNeuronI::ParamValues(tauCa, noNeurons), iniI);
         else model.addNeuronPopulation<rateNeuronE>(PName[p], noNeurons, rateNeuronE::ParamValues(tauCa, noNeurons), iniE);
         // Fake synapses for population averages    
-        model.addSynapsePopulation<dirAvg, diravgPS>(std::string(PName[p])+"avg", SynapseMatrixType::DENSE_INDIVIDUALG, 0, PName[p], PName[p], {}, {}, {}, {});
-        model.addSynapsePopulation<sqrAvg, sqravgPS>(std::string(PName[p])+"sqavg", SynapseMatrixType::DENSE_INDIVIDUALG, 0, PName[p], PName[p], {}, {}, {}, {});
+        if (CNO == 1) {
+            model.addSynapsePopulation<dirAvg, diravgPS>(std::string(PName[p])+"avg", SynapseMatrixType::DENSE_INDIVIDUALG, 0, PName[p], PName[p], {}, {}, {}, {});
+            model.addSynapsePopulation<sqrAvg, sqravgPS>(std::string(PName[p])+"sqavg", SynapseMatrixType::DENSE_INDIVIDUALG, 0, PName[p], PName[p], {}, {}, {}, {});
+        }
     }
     // SYNAPSES
     // --Feedforward pathway--
@@ -77,7 +100,7 @@ void modelDefinition(ModelSpec &model)
     addSyn(model, V2L23E, V2L23I, 1, Lat, .5, 1.);
     addSyn(model, V2L23I, V2L23E, 1, Lat, .5);
     addSyn(model, V2L23I, V2L23I, 1, Lat, .5);
-    // --Feedback pathway--: comment this out to shut off inhibition
+    // --Feedback pathway--: comment this out to shut off feedback
     addSyn(model, V2L23E, V1L23E, 3, FB, .5, .6);
     addSyn(model, V2L23E, V1L23I, 2, FB, .5, .6);
     addSyn(model, V1L23E, V1L4I, 1, FB, .334, .6);

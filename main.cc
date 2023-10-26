@@ -45,20 +45,20 @@ int main() {
 //    ofstream oF2("./test.b", ios::app | ios::binary);
 //    oF2.write(reinterpret_cast<char*>(arr), sizeof(float)*5);
 //    oF2.close();
-    int bufsize = 0;
-    for (int i = 0; i < PMax; i++) if (side[i]*side[i]*depth[i] > bufsize) bufsize = side[i]*side[i]*depth[i];
-    float *buf = new float[bufsize];
+//    int bufsize = 0;
+//    for (int i = 0; i < PMax; i++) if (side[i]*side[i]*depth[i] > bufsize) bufsize = side[i]*side[i]*depth[i];
+//    float *buf = new float[bufsize];
 
-    ifstream iF("./RESULTS/popAvg/It0", ios::in | ios::binary);
-    iF.read(reinterpret_cast<char*>(buf), sizeof(float)*side[0]*side[0]*depth[0]);
+//    ifstream iF("./RESULTS/popAvg/It0", ios::in | ios::binary);
 //    iF.read(reinterpret_cast<char*>(buf), sizeof(float)*side[0]*side[0]*depth[0]);
-    iF.close();
+//    iF.read(reinterpret_cast<char*>(buf), sizeof(float)*side[0]*side[0]*depth[0]);
+//    iF.close();
 
-    for (int i = 0; i<side[0]*side[0]*depth[0]; i++) cout << buf[i] << " ";
-    cout << endl; 
+//    for (int i = 0; i<side[0]*side[0]*depth[0]; i++) cout << buf[i] << " ";
+//    cout << endl; 
 
 //    ofstream oF3("./test.b", ios::out | ios::binary);
 //    oF3.close();
-    
+    cout << sizeof(float) << endl;
     return 0;
 }
